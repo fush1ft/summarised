@@ -17,6 +17,6 @@ jobs:
       - uses: actions/dependency-review-action@v4
         with:
           deny-licenses: >-
-            AGPL-1.0-only, BSL-1.1, Elastic-2.0, SSPL-1.0,
+            AGPL-1.0-only, BUSL-1.1, Elastic-2.0, SSPL-1.0,
             CC-BY-NC-4.0, CC-BY-NC-SA-4.0
           comment-summary-in-pr: on-failure
