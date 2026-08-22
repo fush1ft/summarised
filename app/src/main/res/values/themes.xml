@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Compose supplies the real theme. This only has to hand off from the system
+         splash without a color flash, so it just sets a matching window background.
+         The framework has no DayNight parent (that is an AppCompat theme, and
+         AppCompat is a dependency this app does not otherwise need), so light and
+         dark are split across values/ and values-night/ instead. -->
+    <style name="Theme.Summarised" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/window_background</item>
+    </style>
+</resources>
