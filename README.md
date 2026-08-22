@@ -6,8 +6,9 @@ Record a conversation, get a speaker-labelled transcript, a structured summary,
 and a chat you can ask questions about what was said — **entirely on your device**.
 No account, no API keys, no backend, no telemetry.
 
-> **Status: planning.** No code yet. See [`docs/PLAN.md`](docs/PLAN.md) for the
-> full architecture and milestone breakdown.
+> **Status: early development.** The project scaffold is in place; recording
+> lands next. See [`docs/PLAN.md`](docs/PLAN.md) for the full architecture and
+> milestone breakdown, and [`CHANGELOG.md`](CHANGELOG.md) for what exists today.
 
 ## How it will work
 
@@ -28,6 +29,26 @@ record ──► 16 kHz mono WAV ──► diarize ──► ASR per speaker tur
 Everything is offline by default. An optional bring-your-own-key setting can
 route summaries through a cloud model instead, but it is off unless you turn it
 on and say so explicitly.
+
+## Building
+
+Requires JDK 17. The Gradle wrapper handles everything else; Android Studio will
+offer to download the SDK.
+
+```bash
+./gradlew assembleDebug          # build
+./gradlew testDebugUnitTest      # unit tests
+./gradlew lintDebug              # lint (warnings are errors)
+```
+
+Targets `minSdk` 29 (Android 10) and `compileSdk` 37. The on-device models want
+6 GB of RAM or more to be comfortable.
+
+## Contributing
+
+See [`CONTRIBUTING.md`](CONTRIBUTING.md). The short version: everything must work
+offline, no proprietary dependencies, and nothing is downloaded without the user
+asking for it.
 
 ## Licence
 

@@ -1,0 +1,68 @@
+name: Bug report
+description: Something in the app does not work as expected
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please do not attach recordings containing other people's voices without
+        their permission.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you expect, and what happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Record a ...
+        2. Wait for processing to reach ...
+        3. See ...
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Pixel 7a, Android 15"
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App version
+      placeholder: "0.1.0-alpha01"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: stage
+    attributes:
+      label: Which stage failed?
+      options:
+        - Recording
+        - Model download
+        - Diarization (speaker detection)
+        - Transcription
+        - Summary
+        - Chat
+        - Other / not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: recording-details
+    attributes:
+      label: Recording details
+      description: >
+        For transcription or speaker-detection problems, length and speaker count
+        matter more than anything else. Which models did you have downloaded?
+      placeholder: "12 minutes, 3 speakers, whisper-base multilingual"
