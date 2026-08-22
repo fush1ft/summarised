@@ -1,0 +1,94 @@
+name: Release
+
+# Release artifacts are built here rather than uploaded from a developer's
+# machine, so what users install always corresponds to a specific commit.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release, without the leading v (e.g. 0.1.0-alpha02)'
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and publish APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            echo "value=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+            echo "tag=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run checks
+        run: ./gradlew testDebugUnitTest lintDebug --stacktrace
+
+      # There is no signing key yet, so this publishes the debug variant. Once a
+      # keystore exists it should be added as repository secrets and this step
+      # replaced with assembleRelease plus a signing config.
+      - name: Build APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Name the artifact
+        id: artifact
+        run: |
+          NAME="summarised-${{ steps.version.outputs.value }}-debug.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          sha256sum "$NAME" | tee "$NAME.sha256"
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --target "${{ github.sha }}" \
+            --title "Summarised ${{ steps.version.outputs.value }}" \
+            --prerelease \
+            --notes "$(cat <<'NOTES'
+          Early alpha, built by CI from this commit.
+
+          ### What works
+
+          Nothing user-facing yet. This is the project scaffold: it installs and
+          opens, but the Record, Library and Settings screens are placeholders.
+          Recording, transcription, diarization and summarisation land in later
+          milestones — see [docs/PLAN.md](docs/PLAN.md).
+
+          ### Before you install
+
+          This is a **debug build signed with the standard Android debug key**,
+          because the project has no release keystore yet. That means the
+          signature proves nothing about who built it, and the app is
+          debuggable. Fine for trying it out; it is not a secure release, and it
+          will not be an upgrade path for later signed builds — you will have to
+          uninstall it first.
+
+          It installs alongside any future release build, since the debug variant
+          uses the application ID suffix `.debug`.
+          NOTES
+          )" \
+            "${{ steps.artifact.outputs.name }}" \
+            "${{ steps.artifact.outputs.name }}.sha256"
