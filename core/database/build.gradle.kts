@@ -1,27 +1,25 @@
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+
 plugins {
     alias(libs.plugins.android.library)
-    alias(libs.plugins.kotlin.android)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
 }
 
 android {
     namespace = "io.github.fush1ft.summarised.core.database"
-    compileSdk = 35
-
-    defaultConfig {
-        minSdk = 29
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
-    }
+    compileSdk = 37
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    kotlinOptions {
-        jvmTarget = "17"
+    defaultConfig {
+        minSdk = 29
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
+
 }
 
 ksp {
@@ -44,4 +42,10 @@ dependencies {
     testImplementation(libs.truth)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.androidx.test.junit)
+}
+
+kotlin {
+    compilerOptions {
+        jvmTarget.set(JvmTarget.JVM_17)
+    }
 }
