@@ -1,0 +1,22 @@
+name: Dependency review
+
+# Summarised ships as free software on F-Droid, so a dependency arriving under a
+# non-free licence is a release blocker, not a detail. This surfaces that at
+# review time rather than at submission time.
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          deny-licenses: >-
+            AGPL-1.0-only, BSL-1.1, Elastic-2.0, SSPL-1.0,
+            CC-BY-NC-4.0, CC-BY-NC-SA-4.0
+          comment-summary-in-pr: on-failure

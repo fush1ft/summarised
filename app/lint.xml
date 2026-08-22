@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<lint>
+    <!-- These fire whenever a dependency publishes a new release, which would turn
+         CI red without a single line of code changing. Dependency updates are a
+         deliberate, reviewed action here, not a build failure. -->
+    <issue id="GradleDependency" severity="ignore" />
+    <issue id="AndroidGradlePluginVersion" severity="ignore" />
+
+    <!-- Lint reads the v26 qualifier as a minSdk guard and suggests dropping it.
+         It is not one: the adaptive-icon XML format itself is API 26+, and AAPT2
+         silently declines to merge the folder without the qualifier, which breaks
+         the launcher icon outright. Verified by building both ways. -->
+    <issue id="ObsoleteSdkInt">
+        <ignore path="src/main/res/mipmap-anydpi-v26" />
+    </issue>
+</lint>
