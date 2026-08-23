@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="library_title">Library</string>
+    <string name="library_empty_title">No recordings yet</string>
+    <string name="library_empty_description">Recordings you make will appear here, with transcripts and summaries generated on your device.</string>
+    <string name="library_play">Play</string>
+    <string name="library_pause">Pause</string>
+    <string name="library_rename">Rename</string>
+    <string name="library_delete">Delete</string>
+    <string name="library_delete_confirm_title">Delete this recording?</string>
+    <string name="library_delete_confirm_body">The audio file will be removed from your device. This cannot be undone.</string>
+    <string name="library_cancel">Cancel</string>
+    <string name="library_save">Save</string>
+    <string name="library_rename_label">Title</string>
+    <string name="library_status_queued">Awaiting transcription</string>
+</resources>

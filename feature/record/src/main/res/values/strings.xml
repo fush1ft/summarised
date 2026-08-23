@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="record_title">Record</string>
+    <string name="record_start">Start recording</string>
+    <string name="record_stop">Stop and save</string>
+    <string name="record_pause">Pause</string>
+    <string name="record_resume">Resume</string>
+    <string name="record_discard">Discard</string>
+    <string name="record_idle_hint">Everything is transcribed and summarised on this device. Nothing is uploaded.</string>
+    <string name="record_paused_label">Paused</string>
+    <string name="record_saved">Recording saved</string>
+    <string name="record_too_short">That was too short to keep</string>
+
+    <string name="permission_needed_title">Microphone access needed</string>
+    <string name="permission_needed_body">Summarised records audio on your device to make a transcript. Without the microphone there is nothing to record.</string>
+    <string name="permission_grant">Grant access</string>
+    <string name="permission_denied_body">Microphone access was denied. You can enable it in system settings.</string>
+    <string name="permission_open_settings">Open settings</string>
+</resources>

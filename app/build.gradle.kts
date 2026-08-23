@@ -60,6 +60,10 @@ android {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:database"))
+    implementation(project(":core:data"))
+    implementation(project(":core:audio"))
+    implementation(project(":feature:record"))
+    implementation(project(":feature:library"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

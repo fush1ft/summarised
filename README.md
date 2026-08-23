@@ -6,9 +6,10 @@ Record a conversation, get a speaker-labelled transcript, a structured summary,
 and a chat you can ask questions about what was said — **entirely on your device**.
 No account, no API keys, no backend, no telemetry.
 
-> **Status: early development.** The project scaffold is in place; recording
-> lands next. See [`docs/PLAN.md`](docs/PLAN.md) for the full architecture and
-> milestone breakdown, and [`CHANGELOG.md`](CHANGELOG.md) for what exists today.
+> **Status: early development.** Recording and the library work today.
+> Transcription, speaker detection and summaries are still to come. See
+> [`docs/PLAN.md`](docs/PLAN.md) for the architecture and milestone breakdown, and
+> [`CHANGELOG.md`](CHANGELOG.md) for what exists right now.
 
 ## How it will work
 

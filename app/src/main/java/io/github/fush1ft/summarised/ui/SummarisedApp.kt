@@ -20,6 +20,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
 import io.github.fush1ft.summarised.navigation.RecordingDetailRoute
+import io.github.fush1ft.summarised.feature.library.LibraryRoute
+import io.github.fush1ft.summarised.feature.record.RecordRoute
 import io.github.fush1ft.summarised.navigation.TopLevelDestination
 
 @Composable
@@ -77,10 +79,10 @@ fun SummarisedApp() {
             modifier = Modifier.padding(innerPadding),
         ) {
             composable(TopLevelDestination.RECORD.route) {
-                PlaceholderScreen("Record")
+                RecordRoute()
             }
             composable(TopLevelDestination.LIBRARY.route) {
-                LibraryPlaceholderScreen()
+                LibraryRoute()
             }
             composable(TopLevelDestination.SETTINGS.route) {
                 PlaceholderScreen("Settings")
