@@ -62,6 +62,30 @@ jobs:
           echo "name=$NAME" >> "$GITHUB_OUTPUT"
           sha256sum "$NAME" | tee "$NAME.sha256"
 
+      # Notes come from the changelog so they describe what actually shipped.
+      # They were hardcoded once and immediately went stale, claiming nothing
+      # worked in a release where recording did.
+      - name: Compose release notes
+        run: |
+          {
+            echo "Early alpha, built by CI from commit ${GITHUB_SHA:0:7}."
+            echo
+            awk '/^## \[Unreleased\]/{flag=1;next} /^## \[/{flag=0} flag' CHANGELOG.md \
+              | sed '/^$/{ x; /./d; x; h; }'
+            echo
+            echo "### Before you install"
+            echo
+            echo "This is a **debug build signed with the standard Android debug key**,"
+            echo "because the project has no release keystore yet. The signature proves"
+            echo "nothing about who built it, and the app is debuggable. Fine for trying"
+            echo "out; not a secure release, and not an upgrade path for later signed"
+            echo "builds - you will have to uninstall it first."
+            echo
+            echo "It installs alongside any future release build, since the debug"
+            echo "variant uses the application ID suffix \`.debug\`."
+          } > release-notes.md
+          cat release-notes.md
+
       - name: Publish release
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -70,28 +94,6 @@ jobs:
             --target "${{ github.sha }}" \
             --title "Summarised ${{ steps.version.outputs.value }}" \
             --prerelease \
-            --notes "$(cat <<'NOTES'
-          Early alpha, built by CI from this commit.
-
-          ### What works
-
-          Nothing user-facing yet. This is the project scaffold: it installs and
-          opens, but the Record, Library and Settings screens are placeholders.
-          Recording, transcription, diarization and summarisation land in later
-          milestones — see [docs/PLAN.md](docs/PLAN.md).
-
-          ### Before you install
-
-          This is a **debug build signed with the standard Android debug key**,
-          because the project has no release keystore yet. That means the
-          signature proves nothing about who built it, and the app is
-          debuggable. Fine for trying it out; it is not a secure release, and it
-          will not be an upgrade path for later signed builds — you will have to
-          uninstall it first.
-
-          It installs alongside any future release build, since the debug variant
-          uses the application ID suffix `.debug`.
-          NOTES
-          )" \
+            --notes-file release-notes.md \
             "${{ steps.artifact.outputs.name }}" \
             "${{ steps.artifact.outputs.name }}.sha256"
