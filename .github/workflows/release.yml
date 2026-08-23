@@ -49,7 +49,10 @@ jobs:
       # keystore exists it should be added as repository secrets and this step
       # replaced with assembleRelease plus a signing config.
       - name: Build APK
-        run: ./gradlew assembleDebug --stacktrace
+        run: |
+          ./gradlew assembleDebug --stacktrace \
+            -Psummarised.versionName="${{ steps.version.outputs.value }}" \
+            -Psummarised.versionCode="${{ github.run_number }}"
 
       - name: Name the artifact
         id: artifact

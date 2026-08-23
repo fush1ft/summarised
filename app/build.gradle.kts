@@ -20,8 +20,11 @@ android {
         applicationId = "io.github.fush1ft.summarised"
         minSdk = 29
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0-alpha01"
+        // Overridable from CI so the version inside the APK always matches the
+        // version on the release that ships it. Bump the defaults when cutting a
+        // release; F-Droid requires versionCode to increase monotonically.
+        versionCode = (findProperty("summarised.versionCode") as String?)?.toInt() ?: 2
+        versionName = (findProperty("summarised.versionName") as String?) ?: "0.2.0-alpha02"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
