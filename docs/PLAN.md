@@ -314,18 +314,18 @@ Output: the chosen models and numbers, written into this file.
 
 Fixes from these results, in the lab: the bookmark position is marked in the transcript; answers are capped and cut-off JSON is repaired; WER is also reported without numbers; a thread-count speed test records the phone's thermal state; scenario E can only pass with a ≥ 30-minute recording; cloud models (Pollinations without a key; Groq, Gemini, Cerebras, OpenRouter with a free key) are available for comparison. Pinning ggml's threads to the big cores deadlocked in ggml's barrier on a second run, so it was dropped.
 
-**M1 — Capture.** Recording service, Opus chunks, checkpoints, assistant
+**M1 — Capture.** *(done, verified on the Pixel 10a.)* Recording service, Opus chunks, checkpoints, assistant
 trigger + lock-screen card + haptics, notification and tile fallbacks,
 bookmark list with playback. Usable on its own as a bookmarking recorder.
 *v0.1.*
 
-**M2 — Live transcription.** Model downloader, VAD + Whisper queue, transcript
+**M2 — Live transcription.** *(done: Parakeet via whisper.cpp instead of Whisper; awaiting on-device test.)* Model downloader, VAD + Whisper queue, transcript
 tab with inline bookmarks and search.
 
-**M3 — Bookmark summaries.** llama.cpp integration, job queue, bookmark prompt +
+**M3 — Bookmark summaries.** *(done with the summariser chain: Groq → Pollinations → Gemma 4 E2B; awaiting on-device test.)* llama.cpp integration, job queue, bookmark prompt +
 grammar, results in the notification and the bookmark cards.
 
-**M4 — Whole-recording summary.** Live section summaries, reduce on stop, the
+**M4 — Whole-recording summary.** *(done: summary on stop, in parts for long recordings; templates; Markdown sharing. Live section summaries deferred: cloud summarising is fast enough at the end.)* Live section summaries, reduce on stop, the
 three templates, re-generate, Markdown export. *v0.5: feature-complete.*
 
 **M5 — Polish and release.** Thermal/battery tuning from real 3-hour sessions,

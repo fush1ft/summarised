@@ -8,15 +8,17 @@ offline. No backend, no telemetry.
 
 Record lectures, meetings or field work for hours. Whenever something important
 comes up, **hold the power button** — even with the phone locked in your
-pocket — and feel a click: that's a bookmark. A local model transcribes the
-recording as it goes, summarises a few minutes around each bookmark, and writes
-a summary of the whole recording when you stop.
+pocket — and feel a click: that's a bookmark. Parakeet transcribes the
+recording on the phone as it goes, each bookmark gets a summary of the minutes
+around it, and the whole recording is summarised when you stop.
 
-> **Status: early development.** The project scaffold is in place; recording
-> lands next. See [`docs/PLAN.md`](docs/PLAN.md) for the full architecture and
-> milestone breakdown, and [`CHANGELOG.md`](CHANGELOG.md) for what exists today.
+> **Status: preview.** Recording with power-button bookmarks (M1), on-device
+> transcription (M2) and bookmark and recording summaries (M3/M4) are in; real
+> multi-hour sessions and polish (M5) come next. Install the latest build from
+> the `app-preview` pre-release. See [`docs/PLAN.md`](docs/PLAN.md) for the
+> architecture and [`CHANGELOG.md`](CHANGELOG.md) for what exists today.
 
-## How it will work
+## How it works
 
 ```
 hold power ──► start / bookmark (+ haptic, works on the lock screen)
