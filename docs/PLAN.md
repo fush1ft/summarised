@@ -283,6 +283,16 @@ Output: the chosen models and numbers, written into this file.
 
 *Status:* the lab app is in `lab/` and the test protocol is in [`M0.md`](M0.md). One change from the original plan came out of building it: speech recognition now runs on **whisper.cpp** instead of sherpa-onnx. whisper.cpp and llama.cpp then share one copy of ggml, so the app ships a single inference core. whisper.cpp also brings **Parakeet TDT v3**, which supports Czech and is a third ASR candidate in the benchmark.
 
+#### M0 results so far (Pixel 10a, Tensor G4, Android 17, 26 Nov 2026)
+
+| Question | Answer |
+|---|---|
+| Power-button trigger | **Works, locked and unlocked.** `invocation_type=6` (power-button long press) reaches the session; the mic service starts directly from it in ~50 ms (no trampoline needed), no silenced audio, debounce works, haptic primitives supported. *Still open:* a real 30-minute recording (scenario E). |
+| Speech recognition | **Parakeet TDT 0.6B v3 (q8_0, 668 MB)**: real-time factor 0.12–0.14 (7–8× faster than real time), WER ~24–28 % excluding number formatting. Whisper turbo q5 is somewhat more accurate on one passage (17 % vs 23.5 %) but runs at 1.5–2.5× real time and throttled over three runs, so it can't transcribe live. Whisper small: ~50 % WER, rejected. → **Parakeet for live transcription**; turbo stays a candidate for an optional overnight re-transcription. |
+| LLM | Gemma 4 E2B: Czech rated 5/5, prefill 107 tok/s, but **generation only 1.8 tok/s**, about 10× below expectations, after the phone had been heated by the turbo runs. Facts rated 2/5 because the prompt never said *where* the bookmark was. Speed cause (heat vs. threads) and the other models still to be measured. |
+
+Fixes from these results, in the lab: the bookmark position is marked in the transcript; answers are capped and cut-off JSON is repaired; WER is also reported without numbers; a thread-count speed test records the phone's thermal state; scenario E can only pass with a ≥ 30-minute recording; cloud models (Pollinations without a key; Groq, Gemini, Cerebras, OpenRouter with a free key) are available for comparison. Pinning ggml's threads to the big cores deadlocked in ggml's barrier on a second run, so it was dropped.
+
 **M1 — Capture.** Recording service, Opus chunks, checkpoints, assistant
 trigger + lock-screen card + haptics, notification and tile fallbacks,
 bookmark list with playback. Usable on its own as a bookmarking recorder.

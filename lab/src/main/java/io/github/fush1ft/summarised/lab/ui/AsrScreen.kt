@@ -254,7 +254,13 @@ private fun AsrResults(asr: List<JSONObject>) {
     // Latest run per (model, passage), averaged per model.
     val scores = asr.groupBy { it.optString("model") }.map { (model, runs) ->
         val latest = runs.groupBy { it.optString("passage") }.map { it.value.last() }
-        ModelScore(model, latest.map { it.optDouble("rtf") }.average(), latest.map { it.optDouble("wer") }.average(), latest)
+        // Prefer the number-insensitive WER (digits vs. spoken numbers are not real errors).
+        ModelScore(
+            model,
+            latest.map { it.optDouble("rtf") }.average(),
+            latest.map { if (it.has("wer_nonum")) it.optDouble("wer_nonum") else it.optDouble("wer") }.average(),
+            latest,
+        )
     }.sortedBy { it.wer }
     val mostAccurate = scores.minByOrNull { it.wer }?.model
     val fastest = scores.minByOrNull { it.rtf }?.model
@@ -274,7 +280,7 @@ private fun AsrResults(asr: List<JSONObject>) {
                 }
                 MetricBar(
                     "Přesnost",
-                    "${((1 - s.wer) * 100).toInt().coerceAtLeast(0)} % slov správně",
+                    "${((1 - s.wer) * 100).toInt().coerceAtLeast(0)} % slov správně (bez čísel)",
                     (1 - s.wer).toFloat(),
                     highlight = s.model == mostAccurate,
                 )

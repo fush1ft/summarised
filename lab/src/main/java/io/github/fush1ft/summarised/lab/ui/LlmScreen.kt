@@ -87,7 +87,7 @@ fun LlmScreen(onBack: () -> Unit) {
     val source = sources.firstOrNull { it.label == sourceLabel } ?: sources.first()
     var template by remember(sourceLabel) { mutableStateOf(source.template) }
     var threads by remember { mutableIntStateOf(4) }
-    var maxTokens by remember { mutableIntStateOf(512) }
+    var maxTokens by remember { mutableIntStateOf(768) }
     var temperature by remember { mutableFloatStateOf(0f) }
 
     ScreenHeader(
@@ -155,7 +155,7 @@ fun LlmScreen(onBack: () -> Unit) {
                 Icons.Rounded.AutoAwesome,
                 enabled = llmFiles.isNotEmpty(),
             ) {
-                BenchRunner.runLlms(llmFiles, source, template, BenchRunner.LlmParams(threads, maxTokens, temperature))
+                BenchRunner.runLlms(context, llmFiles, source, template, BenchRunner.LlmParams(threads, maxTokens, temperature))
             }
         } else {
             Text("${b.step} z ${b.total}: ${b.title} píše…", style = MaterialTheme.typography.titleMedium)
@@ -185,11 +185,15 @@ fun LlmScreen(onBack: () -> Unit) {
             Text("Vlákna procesoru:")
             Choice(listOf(2, 4, 6, 8), threads, { "$it" }) { threads = it }
             Text("Max. délka odpovědi (tokeny):")
-            Choice(listOf(256, 512, 1024), maxTokens, { "$it" }) { maxTokens = it }
+            Choice(listOf(512, 768, 1024), maxTokens, { "$it" }) { maxTokens = it }
             Text("Teplota (0 = vždy stejná odpověď):")
             Choice(listOf(0f, 0.3f, 0.7f), temperature, { if (it == 0f) "0" else "$it" }) { temperature = it }
         }
     }
+
+    CloudSection(source, template, temperature)
+
+    SpeedSection(llmFiles)
 
     // 3. Rate
     val forSource = results.filter { it.optString("kind") == "llm" && it.optString("source") == source.label }
@@ -221,6 +225,10 @@ private fun LlmResultCard(r: JSONObject) {
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(r.optString("model"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                if (r.has("cloud")) {
+                    Pill("☁ cloud", Tone.WARN)
+                    Spacer(Modifier.width(6.dp))
+                }
                 if (r.has("error")) Pill("Selhalo", Tone.ERROR)
                 else if (!r.optBoolean("json_valid")) Pill("Špatný formát", Tone.WARN)
             }
@@ -245,7 +253,11 @@ private fun LlmResultCard(r: JSONObject) {
                 }
             }
             HorizontalDivider()
-            val json = Texts.extractJson(r.optString("text"))
+            val parsed = Texts.parseJson(r.optString("text"))
+            val json = parsed?.first
+            if (parsed?.second == true) {
+                Text("Odpověď byla useknutá, zobrazuji, co se dalo zachránit.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
             if (json != null) SummaryView(json) else {
                 SelectionContainer { Text(r.optString("text"), style = MaterialTheme.typography.bodyMedium) }
             }

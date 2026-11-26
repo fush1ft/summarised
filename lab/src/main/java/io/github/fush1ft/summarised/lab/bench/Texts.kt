@@ -72,7 +72,7 @@ object Texts {
         zachytí světlo pomocí chlorofylu, dochází k fotolýze vody, to znamená, že se voda rozkládá a uvolňuje se
         kyslík, a vznikají dvě důležité látky, ATP a NADPH. tyhle dvě látky jsou takové baterky, které se pak
         využijí v druhé fázi. takže kyslík, který dýcháme, pochází z vody, ne z oxidu uhličitého, to je častá chyba
-        v testech. no a teď pozor, tohle bude určitě u zkoušky. v calvinově cyklu, který probíhá ve stromatu
+        v testech. [ZÁLOŽKA] no a teď pozor, tohle bude určitě u zkoušky. v calvinově cyklu, který probíhá ve stromatu
         chloroplastu, se váže oxid uhličitý na ribulóza bisfosfát, a to pomocí enzymu rubisko. rubisko je
         mimochodem nejrozšířenější bílkovina na zemi. z tohohle vzniká nestabilní meziprodukt, který se rozpadne
         na dvě molekuly kyseliny fosfoglycerové, a ty se pak za spotřeby ATP a NADPH redukují na glyceraldehyd
@@ -92,19 +92,66 @@ object Texts {
             "Přepis může obsahovat chyby rozpoznávání a vycpávková slova; opravuj je jen tam, kde je význam jasný, " +
             "a nic si nevymýšlej. Odpovídáš vždy česky a pouze platným JSON objektem bez dalšího textu."
 
+    const val MARKER = "[ZÁLOŽKA]"
+
+    /** Puts the bookmark marker at the sentence boundary nearest the middle (for texts without one). */
+    fun withMarker(text: String): String {
+        if (text.contains(MARKER)) return text
+        val mid = text.length / 2
+        val boundaries = Regex("[.!?] ").findAll(text).map { it.range.last }.toList()
+        val at = boundaries.minByOrNull { kotlin.math.abs(it - mid) } ?: return "$MARKER $text"
+        return text.substring(0, at + 1) + "$MARKER " + text.substring(at + 1)
+    }
+
     fun bookmarkPrompt(template: Template, transcript: String, atLabel: String): String =
-        "Uživatel si během nahrávání (typ: ${template.label.lowercase()}) označil v čase $atLabel záložku, " +
-            "protože tam zaznělo něco důležitého. Níže je přepis zhruba dvou minut před záložkou a dvou minut po ní.\n\n" +
-            "PŘEPIS:\n$transcript\n\n" +
-            "Vrať JSON v tomto tvaru:\n" +
-            """{"nadpis": "krátký výstižný nadpis", "shrnuti": "2–3 věty, co je u záložky podstatné", "body": ["klíčový bod", "..."], ${template.extras}}"""
+        "Uživatel si během nahrávání (typ: ${template.label.lowercase()}) v čase $atLabel stiskl záložku, " +
+            "protože tam zaznělo něco důležitého. Místo stisku je v přepisu označené $MARKER. " +
+            "Soustřeď se hlavně na to, co zaznělo zhruba minutu před značkou a minutu po ní. " +
+            "Zbytek přepisu ber jen jako kontext.\n\n" +
+            "PŘEPIS:\n${withMarker(transcript)}\n\n" +
+            "Buď stručný: nadpis do 8 slov, shrnutí 2–3 věty, nejvýš 5 bodů a nejvýš 3 položky v každém dalším seznamu. " +
+            "Nepoužívej Markdown ani bloky kódu, vrať jen samotný JSON v tomto tvaru:\n" +
+            """{"nadpis": "krátký výstižný nadpis", "shrnuti": "co je u záložky podstatné", "body": ["klíčový bod", "..."], ${template.extras}}"""
 
     /** Pulls the JSON object out of a model answer (code fences, thinking blocks, chatter). */
-    fun extractJson(answer: String): JSONObject? {
-        val cleaned = answer.replace(Regex("(?s)<think>.*?</think>"), "")
+    fun extractJson(answer: String): JSONObject? = parseJson(answer)?.first
+
+    /** Like [extractJson]; the flag says whether a cut-off answer had to be closed to parse. */
+    fun parseJson(answer: String): Pair<JSONObject, Boolean>? {
+        val cleaned = answer.replace(Regex("(?s)<think>.*?</think>"), "").replace("```json", "").replace("```", "")
         val start = cleaned.indexOf('{')
+        if (start < 0) return null
         val end = cleaned.lastIndexOf('}')
-        if (start < 0 || end <= start) return null
-        return runCatching { JSONObject(cleaned.substring(start, end + 1)) }.getOrNull()
+        if (end > start) runCatching { return JSONObject(cleaned.substring(start, end + 1)) to false }
+        return repairTruncated(cleaned.substring(start))?.let { it to true }
+    }
+
+    /**
+     * Closes a JSON object that was cut off by the token limit: tries ever shorter
+     * prefixes that end on a complete value and appends the missing brackets.
+     */
+    private fun repairTruncated(s: String): JSONObject? {
+        val cuts = s.indices.filter { s[it] == '}' || s[it] == ']' || s[it] == '"' }.reversed()
+        for (cut in cuts.take(400)) {
+            val prefix = s.substring(0, cut + 1).trimEnd().trimEnd(',')
+            val stack = ArrayDeque<Char>()
+            var inString = false
+            var escape = false
+            for (c in prefix) {
+                when {
+                    escape -> escape = false
+                    c == '\\' && inString -> escape = true
+                    c == '"' -> inString = !inString
+                    inString -> Unit
+                    c == '{' -> stack.addLast('}')
+                    c == '[' -> stack.addLast(']')
+                    c == '}' || c == ']' -> if (stack.isNotEmpty()) stack.removeLast()
+                }
+            }
+            if (inString) continue
+            val closed = prefix + stack.reversed().joinToString("")
+            runCatching { return JSONObject(closed) }
+        }
+        return null
     }
 }

@@ -244,7 +244,7 @@ fun TriggerScreen(onBack: () -> Unit) {
     ) {
         Scenarios.all.forEachIndexed { i, s ->
             if (i > 0) HorizontalDivider()
-            ScenarioItem(s, verdicts[s.id]) { ok ->
+            ScenarioItem(s, verdicts[s.id], evidence = if (s.id == "E") longRecordingEvidence(results) else null) { ok ->
                 Scenarios.record(s.id, ok, Settings.startMode(context).name)
             }
         }
@@ -284,7 +284,7 @@ fun TriggerScreen(onBack: () -> Unit) {
 }
 
 @Composable
-private fun ScenarioItem(s: Scenarios.Scenario, verdict: Boolean?, onVerdict: (Boolean) -> Unit) {
+private fun ScenarioItem(s: Scenarios.Scenario, verdict: Boolean?, evidence: Pair<Boolean, String>? = null, onVerdict: (Boolean) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             val (bg, fg) = toneColors(
@@ -309,12 +309,16 @@ private fun ScenarioItem(s: Scenarios.Scenario, verdict: Boolean?, onVerdict: (B
         }
         Text(s.steps, style = MaterialTheme.typography.bodyMedium)
         Text("Co má nastat: ${s.expect}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (evidence != null) {
+            Hint(evidence.second, if (evidence.first) Icons.Rounded.Info else Icons.Rounded.Warning, if (evidence.first) Tone.DONE else Tone.WARN)
+        }
+        val canPass = evidence?.first ?: true
         ButtonPair(
             left = {
                 if (verdict == true) {
-                    Button(onClick = { onVerdict(true) }, modifier = Modifier.fillMaxWidth()) { VerdictLabel(true) }
+                    Button(onClick = { onVerdict(true) }, enabled = canPass, modifier = Modifier.fillMaxWidth()) { VerdictLabel(true) }
                 } else {
-                    OutlinedButton(onClick = { onVerdict(true) }, modifier = Modifier.fillMaxWidth()) { VerdictLabel(true) }
+                    OutlinedButton(onClick = { onVerdict(true) }, enabled = canPass, modifier = Modifier.fillMaxWidth()) { VerdictLabel(true) }
                 }
             },
             right = {
@@ -329,6 +333,19 @@ private fun ScenarioItem(s: Scenarios.Scenario, verdict: Boolean?, onVerdict: (B
                 }
             },
         )
+    }
+}
+
+/** The 30-minute test is checked against real data, not just a tap. */
+private fun longRecordingEvidence(results: List<org.json.JSONObject>): Pair<Boolean, String> {
+    val long = results.filter { it.optString("kind") == "capture" && it.optLong("duration_ms") >= 30 * 60_000L }
+        .maxByOrNull { it.optLong("duration_ms") }
+    return if (long == null) {
+        false to "Zatím tu není žádná nahrávka delší než 30 minut. „Funguje“ půjde označit až po ní."
+    } else {
+        val silent = long.optInt("silent_windows")
+        (silent == 0) to "Nejdelší nahrávka: ${CaptureController.formatMs(long.optLong("duration_ms"))}, " +
+            if (silent == 0) "mikrofon celou dobu nahrával ✓" else "ticho v $silent úsecích po 5 s ✗"
     }
 }
 

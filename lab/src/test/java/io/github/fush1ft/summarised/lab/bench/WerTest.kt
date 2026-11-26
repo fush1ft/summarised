@@ -18,4 +18,12 @@ class WerTest {
     fun insertionsAndDeletions() {
         assertThat(Wer.compute("a b c d", "a c d e")).isEqualTo(2 to 4)
     }
+
+    @Test
+    fun numbersDoNotCountWithoutNumbers() {
+        val ref = "připravte příklady sedm až dvanáct a teplota je osm stupňů"
+        val hyp = "připravte příklady 7 až 12 a teplota je 8°C"
+        assertThat(Wer.rate(ref, hyp)).isGreaterThan(0.3)
+        assertThat(Wer.rateWithoutNumbers(ref, hyp)).isEqualTo(0.0)
+    }
 }

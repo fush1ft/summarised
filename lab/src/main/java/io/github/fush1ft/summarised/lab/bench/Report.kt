@@ -60,13 +60,15 @@ object Report {
         val asr = all.filter { it.optString("kind") == "asr" }
         sb.appendLine("## Přepis (${asr.size} běhů)")
         if (asr.isNotEmpty()) {
-            sb.appendLine("| model | pasáž | vlákna | audio | běh | RTF | WER | načtení |")
-            sb.appendLine("|---|---|---|---|---|---|---|---|")
+            sb.appendLine("| model | pasáž | vlákna | audio | běh | RTF | WER | WER bez čísel | teplota |")
+            sb.appendLine("|---|---|---|---|---|---|---|---|---|")
             asr.forEach { r ->
                 sb.appendLine(
                     "| ${r.optString("model")} | ${r.optString("passage")} | ${r.optInt("threads")} | " +
                         "${s(r.optDouble("audio_ms"))} | ${s(r.optDouble("run_ms"))} | ${"%.2f".format(r.optDouble("rtf"))} | " +
-                        "${"%.1f".format(100 * r.optDouble("wer"))} % | ${s(r.optDouble("load_ms"))} |",
+                        "${"%.1f".format(100 * r.optDouble("wer"))} % | " +
+                        (if (r.has("wer_nonum")) "${"%.1f".format(100 * r.optDouble("wer_nonum"))} %" else "–") +
+                        " | ${if (r.has("thermal")) r.optInt("thermal") else "–"} |",
                 )
             }
             sb.appendLine()
@@ -82,19 +84,36 @@ object Report {
         sb.appendLine("## Shrnutí (${llm.size} běhů)")
         val ok = llm.filter { !it.has("error") }
         if (ok.isNotEmpty()) {
-            sb.appendLine("| model | zdroj | prompt tok | prefill tok/s | gen tok/s | načtení | JSON | čeština | správnost | formát |")
-            sb.appendLine("|---|---|---|---|---|---|---|---|---|---|")
+            sb.appendLine("| model | zdroj | prompt tok | prefill tok/s | gen tok/s | načtení | JSON | čeština | správnost | formát | teplota před→po | volná RAM |")
+            sb.appendLine("|---|---|---|---|---|---|---|---|---|---|---|---|")
             ok.forEach { r ->
                 sb.appendLine(
                     "| ${r.optString("model")} | ${r.optString("source")} | ${r.optInt("prompt_tokens")} | " +
                         "${tps(r.optInt("prompt_tokens"), r.optDouble("prompt_ms"))} | ${tps(r.optInt("gen_tokens"), r.optDouble("gen_ms"))} | " +
                         "${s(r.optDouble("load_ms"))} | ${if (r.optBoolean("json_valid")) "✓" else "✗"} | " +
                         "${r.optInt("rating_czech", 0).takeIf { it > 0 } ?: "–"} | ${r.optInt("rating_facts", 0).takeIf { it > 0 } ?: "–"} | " +
-                        "${r.optString("prompt_format")} |",
+                        "${if (r.has("cloud")) "cloud" else r.optString("prompt_format")} | " +
+                        (if (r.has("thermal_before")) "${r.optInt("thermal_before")}→${r.optInt("thermal_after")}" else "–") + " | " +
+                        (if (r.has("free_mem_mb")) "${r.optLong("free_mem_mb")} MB" else "–") + " |",
                 )
             }
         }
         llm.filter { it.has("error") }.forEach { sb.appendLine("- ✗ ${it.optString("model")}: ${it.optString("error")}") }
+
+        val speed = all.filter { it.optString("kind") == "llm_speed" }
+        if (speed.isNotEmpty()) {
+            sb.appendLine()
+            sb.appendLine("### Rychlost podle vláken")
+            sb.appendLine("| model | vlákna | gen tok/s | prefill tok/s | teplota před→po | volná RAM | chyba |")
+            sb.appendLine("|---|---|---|---|---|---|---|")
+            speed.forEach { r ->
+                sb.appendLine(
+                    "| ${r.optString("model")} | ${r.optInt("threads")} | ${"%.1f".format(r.optDouble("gen_tps"))} | " +
+                        "${"%.0f".format(r.optDouble("prefill_tps"))} | ${r.optInt("thermal_before")}→${r.optInt("thermal_after")} | " +
+                        "${r.optLong("free_mem_mb")} MB | ${r.optString("error")} |",
+                )
+            }
+        }
         sb.appendLine()
         ok.forEach { r ->
             sb.appendLine("<details><summary>${r.optString("model")} / ${r.optString("source")}</summary>")

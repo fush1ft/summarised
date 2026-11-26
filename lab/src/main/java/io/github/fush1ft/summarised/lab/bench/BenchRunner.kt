@@ -66,6 +66,7 @@ object BenchRunner {
                     }
                     val text = r.optString("text")
                     val wer = Wer.rate(passage.text, text)
+                    val werNoNum = Wer.rateWithoutNumbers(passage.text, text)
                     val rtf = r.optDouble("run_ms") / r.optDouble("audio_ms")
                     Results.add(
                         "asr",
@@ -81,6 +82,8 @@ object BenchRunner {
                             .put("decode_ms", r.optDouble("decode_ms"))
                             .put("rtf", rtf)
                             .put("wer", wer)
+                            .put("wer_nonum", werNoNum)
+                            .put("thermal", thermal(app))
                             .put("text", text),
                     )
                     EventLog.add("ASR", "${model.name} / ${passage.id}: RTF ${"%.2f".format(rtf)}, WER ${"%.1f".format(wer * 100)} %")
@@ -98,15 +101,16 @@ object BenchRunner {
     data class LlmParams(val threads: Int = 4, val maxTokens: Int = 512, val temperature: Float = 0f, val nCtx: Int = 4096)
 
     /** Runs every model in [models] on the same source, one after another. */
-    fun runLlms(models: List<File>, source: LlmSource, template: Texts.Template, params: LlmParams) {
+    fun runLlms(context: Context, models: List<File>, source: LlmSource, template: Texts.Template, params: LlmParams) {
         if (_busy.value != null || models.isEmpty()) return
+        val app = context.applicationContext
         cancelled = false
         scope.launch {
             try {
                 models.forEachIndexed { i, model ->
                     if (cancelled) return@launch
                     _busy.value = Busy(Models.displayName(model), i + 1, models.size)
-                    runOne(model, source, template, params)
+                    runOne(app, model, source, template, params)
                 }
             } finally {
                 _busy.value = null
@@ -115,7 +119,9 @@ object BenchRunner {
         }
     }
 
-    private fun runOne(model: File, source: LlmSource, template: Texts.Template, params: LlmParams) {
+    private fun runOne(app: Context, model: File, source: LlmSource, template: Texts.Template, params: LlmParams) {
+        val thermalBefore = thermal(app)
+        val freeMemBefore = freeMemMb(app)
         _stream.value = ""
         _streamingModel.value = model.name
         markStart("llm", model, source.label, template.label)
@@ -150,7 +156,7 @@ object BenchRunner {
                 return
             }
             val text = r.optString("text")
-            val parsed = Texts.extractJson(text)
+            val parsed = Texts.parseJson(text)?.first
             Results.add(
                 "llm",
                 JSONObject()
@@ -169,6 +175,9 @@ object BenchRunner {
                     .put("gen_ms", r.optDouble("gen_ms"))
                     .put("cancelled", r.optBoolean("cancelled"))
                     .put("json_valid", parsed != null)
+                    .put("thermal_before", thermalBefore)
+                    .put("thermal_after", thermal(app))
+                    .put("free_mem_mb", freeMemBefore)
                     .put("text", text),
             )
             EventLog.add(
@@ -204,20 +213,120 @@ object BenchRunner {
         val start = all.lastOrNull { it.optString("kind") == "run_start" } ?: return
         val startAt = start.optLong("at")
         val finished = all.any {
-            it.optLong("at") >= startAt && it.optString("kind") in setOf("asr", "asr_error", "llm") &&
+            it.optLong("at") >= startAt && it.optString("kind") in setOf("asr", "asr_error", "llm", "llm_speed") &&
                 it.optString("model") == start.optString("model")
         }
         if (finished || all.any { it.optString("kind") == "crash_noted" && it.optLong("start_at") == startAt }) return
         val reason = "Aplikace spadla během běhu modelu (nejspíš došla paměť)."
         val type = start.optString("type")
         Results.add(
-            if (type == "llm") "llm" else "asr_error",
+            when (type) {
+                "llm" -> "llm"
+                "llm_speed" -> "llm_speed"
+                else -> "asr_error"
+            },
             JSONObject().put("model", start.optString("model")).put("model_file", start.optString("model_file"))
                 .put("source", start.optString("source")).put("template", start.optString("template"))
                 .put("error", reason),
         )
         Results.add("crash_noted", JSONObject().put("start_at", startAt))
         EventLog.add("CRASH", "${start.optString("model")}: $reason")
+    }
+
+    /** PowerManager thermal status: 0 none, 1 light, 2 moderate, 3 severe, 4+ critical. */
+    fun thermal(context: Context): Int =
+        context.getSystemService(android.os.PowerManager::class.java).currentThermalStatus
+
+    private fun freeMemMb(context: Context): Long {
+        val mi = android.app.ActivityManager.MemoryInfo()
+        context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(mi)
+        return mi.availMem / 1_000_000
+    }
+
+    /**
+     * Short generation at several thread counts: tells whether slow output is
+     * the thread count (big vs. little cores) or the phone heating up.
+     */
+    fun runSpeedTest(context: Context, model: File, threadCounts: List<Int> = listOf(2, 4, 6, 8)) {
+        if (_busy.value != null) return
+        val app = context.applicationContext
+        cancelled = false
+        scope.launch {
+            try {
+                threadCounts.forEachIndexed { i, threads ->
+                    if (cancelled) return@launch
+                    _busy.value = Busy("Rychlost: ${Models.displayName(model)}, $threads vlákna", i + 1, threadCounts.size)
+                    markStart("llm_speed", model)
+                    val before = thermal(app)
+                    val r = Native.json(
+                        Native.instance.generate(
+                            model.path, ByteArray(0),
+                            "Napiš česky jeden odstavec o tom, jak se připravit na zkoušku z biologie.".toByteArray(),
+                            1024, threads, 48, 0f,
+                        ) { },
+                    )
+                    Results.add(
+                        "llm_speed",
+                        JSONObject()
+                            .put("model", Models.displayName(model))
+                            .put("threads", threads)
+                            .put("ok", r.optBoolean("ok"))
+                            .put("error", r.optString("error"))
+                            .put("load_ms", r.optDouble("load_ms"))
+                            .put("prefill_tps", r.optInt("prompt_tokens") * 1000.0 / r.optDouble("prompt_ms").coerceAtLeast(1.0))
+                            .put("gen_tps", r.optInt("gen_tokens") * 1000.0 / r.optDouble("gen_ms").coerceAtLeast(1.0))
+                            .put("thermal_before", before)
+                            .put("thermal_after", thermal(app))
+                            .put("free_mem_mb", freeMemMb(app)),
+                    )
+                }
+            } catch (e: Throwable) {
+                EventLog.add("LLM", "speed test crashed: ${e.message}")
+            } finally {
+                _busy.value = null
+            }
+        }
+    }
+
+    /** Same prompt as the local models, sent to a cloud provider. */
+    fun runCloud(context: Context, provider: Cloud.Provider, model: String?, source: LlmSource, template: Texts.Template, temperature: Float) {
+        if (_busy.value != null) return
+        val app = context.applicationContext
+        val key = Cloud.key(app, provider)
+        val label = "${provider.name}" + (model?.let { ": $it" } ?: "")
+        scope.launch {
+            _busy.value = Busy("Cloud: $label", 1, 1)
+            _stream.value = ""
+            try {
+                val a = Cloud.chat(provider, key, model, Texts.SYSTEM_PROMPT, Texts.bookmarkPrompt(template, source.transcript, source.at), temperature)
+                val parsed = Texts.parseJson(a.text)
+                Results.add(
+                    "llm",
+                    JSONObject()
+                        .put("model", "${provider.name}: ${a.model}")
+                        .put("cloud", provider.id)
+                        .put("template", template.label)
+                        .put("source", source.label)
+                        .put("load_ms", 0.0)
+                        .put("prompt_tokens", a.promptTokens)
+                        .put("prompt_ms", 0.0)
+                        .put("gen_tokens", a.genTokens)
+                        .put("gen_ms", a.totalMs)
+                        .put("json_valid", parsed != null)
+                        .put("text", a.text),
+                )
+                EventLog.add("CLOUD", "$label: ${a.genTokens} tok in ${"%.1f".format(a.totalMs / 1000)} s, JSON ${parsed != null}")
+            } catch (e: Throwable) {
+                EventLog.add("CLOUD", "$label: ${e.message}")
+                Results.add(
+                    "llm",
+                    JSONObject().put("model", label).put("cloud", provider.id).put("source", source.label)
+                        .put("template", template.label).put("error", e.message ?: e.javaClass.simpleName),
+                )
+            } finally {
+                _busy.value = null
+            }
+        }
     }
 
     fun rate(uid: String, key: String, value: Int) {
