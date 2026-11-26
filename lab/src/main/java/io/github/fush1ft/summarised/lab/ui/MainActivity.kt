@@ -24,10 +24,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -47,8 +49,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import io.github.fush1ft.summarised.lab.bench.BenchRunner
 import io.github.fush1ft.summarised.lab.bench.Models
 import io.github.fush1ft.summarised.lab.capture.CaptureController
 import kotlinx.coroutines.delay
@@ -87,6 +91,7 @@ private fun LabApp() {
 
     Column(Modifier.fillMaxSize().safeDrawingPadding()) {
         if (screen != Screen.TRIGGER) RecordingBanner { screen = Screen.TRIGGER }
+        BusyBanner()
         AnimatedContent(
             targetState = screen,
             transitionSpec = {
@@ -110,6 +115,32 @@ private fun LabApp() {
                 }
                 Spacer(Modifier.height(40.dp))
             }
+        }
+    }
+}
+
+/** Always-visible strip while a model test runs in the background, with a way to stop it. */
+@Composable
+private fun BusyBanner() {
+    val busy by BenchRunner.busy.collectAsStateWithLifecycle()
+    val b = busy ?: return
+    Surface(
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        shape = RoundedCornerShape(20.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+    ) {
+        Row(Modifier.padding(start = 16.dp, end = 8.dp, top = 6.dp, bottom = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+            CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
+            Spacer(Modifier.width(12.dp))
+            Text(
+                "Běží test ${b.step}/${b.total}: ${b.title}",
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            TextButton(onClick = { BenchRunner.cancel() }) { Text("Zrušit") }
         }
     }
 }

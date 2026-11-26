@@ -168,6 +168,30 @@ fun AsrScreen(onBack: () -> Unit) {
                     Models.scope.launch { BenchRecorder.record(context.applicationContext, id) }
                 }
             }
+            // Never disable silently: say why, and offer the way out.
+            val b = busy
+            val otherRecording = recordingId
+            if (b != null) {
+                Hint(
+                    "Nahrávat teď nejde, na pozadí běží test modelů: ${b.title} (${b.step} z ${b.total}). " +
+                        "Počkej, až doběhne, nebo ho zruš.",
+                    Icons.Rounded.Info,
+                    Tone.WARN,
+                )
+                OutlinedButton(onClick = { BenchRunner.cancel() }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Close, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Zrušit běžící test")
+                }
+            } else if (otherRecording != null) {
+                val title = Texts.passages.firstOrNull { it.id == otherRecording }?.title ?: otherRecording
+                Hint("Právě se nahrává jiný text: $title.", Icons.Rounded.Info, Tone.WARN)
+                OutlinedButton(onClick = { BenchRecorder.stop() }, modifier = Modifier.fillMaxWidth()) {
+                    Icon(Icons.Rounded.Stop, null)
+                    Spacer(Modifier.width(6.dp))
+                    Text("Ukončit tu nahrávku")
+                }
+            }
             if (passage in recorded) {
                 val next = Texts.passages.firstOrNull { it !in recorded }
                 if (next != null) {
