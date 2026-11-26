@@ -11,7 +11,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RecordingEntity::class, AudioChunkEntity::class, BookmarkEntity::class, SegmentEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -31,7 +31,7 @@ abstract class SummarisedDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(context.applicationContext, SummarisedDatabase::class.java, NAME)
                     // Version 1 only ever shipped in pre-alpha builds of the old plan.
                     .fallbackToDestructiveMigrationFrom(true, 1)
-                    .addMigrations(MIGRATION_2_3)
+                    .addMigrations(MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }
@@ -42,6 +42,15 @@ abstract class SummarisedDatabase : RoomDatabase() {
 val MIGRATION_2_3 = object : Migration(2, 3) {
     override fun migrate(db: SupportSQLiteDatabase) {
         db.execSQL("ALTER TABLE recordings ADD COLUMN transcribedUntilMs INTEGER NOT NULL DEFAULT 0")
+    }
+}
+
+/** M3/M4: summary template and the whole-recording summary. */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE recordings ADD COLUMN template TEXT NOT NULL DEFAULT 'LECTURE'")
+        db.execSQL("ALTER TABLE recordings ADD COLUMN summaryJson TEXT")
+        db.execSQL("ALTER TABLE recordings ADD COLUMN summarisedBy TEXT")
     }
 }
 

@@ -62,6 +62,7 @@ import io.github.fush1ft.summarised.core.designsystem.component.Pill
 import io.github.fush1ft.summarised.core.designsystem.component.PulsingDot
 import io.github.fush1ft.summarised.core.designsystem.component.SectionCard
 import io.github.fush1ft.summarised.core.designsystem.component.Tone
+import io.github.fush1ft.summarised.transcribe.DownloadableModel
 import io.github.fush1ft.summarised.transcribe.SpeechModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -90,7 +91,7 @@ fun HomeScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit) {
 
     val model by SpeechModel.status.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { SpeechModel.refresh(context) }
-    if (model is SpeechModel.Status.Missing) {
+    if (model is DownloadableModel.Status.Missing) {
         Hint("Přepis řeči je vypnutý: v Nastavení si stáhni model (668 MB).", Icons.Rounded.GraphicEq, Tone.NEUTRAL)
     }
 

@@ -76,6 +76,8 @@ object CaptureController {
                 BookmarkEntity(recordingId = recordingId, atMs = at, createdVia = source, createdAt = System.currentTimeMillis()),
             )
             replacePlaceholder(placeholder, id)
+            // Summarised once the transcript covers the two minutes after it.
+            io.github.fush1ft.summarised.summarise.SummaryManager.queueBookmark(context, id, 30)
         }
         return Outcome.Bookmarked(index, at)
     }

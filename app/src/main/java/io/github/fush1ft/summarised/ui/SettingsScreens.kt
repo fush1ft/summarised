@@ -46,6 +46,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -151,6 +152,10 @@ fun SummaryModeSection(step: Int?) {
     var mode by remember { mutableStateOf(AppPrefs.mode(context)) }
     var key by remember { mutableStateOf(AppPrefs.groqKey(context)) }
     var onDeviceOnly by remember { mutableStateOf(AppPrefs.onDeviceOnly(context)) }
+    var useGroq by remember { mutableStateOf(AppPrefs.useGroq(context)) }
+    var usePollinations by remember { mutableStateOf(AppPrefs.usePollinations(context)) }
+    var useLocal by remember { mutableStateOf(AppPrefs.useLocal(context)) }
+    var template by remember { mutableStateOf(io.github.fush1ft.summarised.summarise.Prompts.Template.of(AppPrefs.defaultTemplate(context))) }
 
     SectionCard("Shrnutí", "Kdo ti bude psát shrnutí záložek a nahrávek.", step = step, done = mode == AppPrefs.Mode.ADVANCED || key.isNotBlank()) {
         ModeOption(
@@ -173,7 +178,28 @@ fun SummaryModeSection(step: Int?) {
             AppPrefs.setMode(context, mode)
         }
 
-        if (mode == AppPrefs.Mode.EASY) {
+        if (mode == AppPrefs.Mode.ADVANCED) {
+            ToggleRow("Jen v telefonu", "Nic se neodesílá. Shrnutí je pomalejší a méně přesné.", onDeviceOnly) {
+                onDeviceOnly = it
+                AppPrefs.setOnDeviceOnly(context, it)
+            }
+            if (!onDeviceOnly) {
+                ToggleRow("Groq", "Nejrychlejší a nejpřesnější, potřebuje klíč.", useGroq) {
+                    useGroq = it
+                    AppPrefs.setUseGroq(context, it)
+                }
+                ToggleRow("Pollinations", "Bez registrace, jeden dotaz za 45 s.", usePollinations) {
+                    usePollinations = it
+                    AppPrefs.setUsePollinations(context, it)
+                }
+                ToggleRow("Telefon (Gemma 4)", "Záloha bez internetu, pomalá.", useLocal) {
+                    useLocal = it
+                    AppPrefs.setUseLocal(context, it)
+                }
+            }
+        }
+
+        if (!(mode == AppPrefs.Mode.ADVANCED && (onDeviceOnly || !useGroq))) {
             Text("Klíč Groq (zdarma, nepovinný)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "S klíčem je shrnutí hotové za 1–2 sekundy a je nejpřesnější. Bez něj čekáš na Pollinations " +
@@ -194,19 +220,20 @@ fun SummaryModeSection(step: Int?) {
             )
             OutlinedButton(onClick = {
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, "https://console.groq.com/keys".toUri())) }
+                io.github.fush1ft.summarised.summarise.SummaryManager.kick(context)
             }) { Text("Získat klíč zdarma (1 minuta)") }
-        } else {
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Jen v telefonu", style = MaterialTheme.typography.titleMedium)
-                    Text("Nic se neodesílá. Shrnutí je pomalejší a méně přesné.", style = MaterialTheme.typography.bodySmall)
-                }
-                Switch(checked = onDeviceOnly, onCheckedChange = {
-                    onDeviceOnly = it
-                    AppPrefs.setOnDeviceOnly(context, it)
-                })
-            }
-            Hint("Výběr poskytovatelů a jejich pořadí přibude spolu se shrnutím.", Icons.Rounded.Info)
+        }
+
+        LocalModelRow()
+
+        Text("Výchozí typ nových nahrávek:", style = MaterialTheme.typography.labelLarge)
+        io.github.fush1ft.summarised.core.designsystem.component.Choice(
+            io.github.fush1ft.summarised.summarise.Prompts.Template.entries,
+            template,
+            { it.label },
+        ) {
+            template = it
+            AppPrefs.setDefaultTemplate(context, it.name)
         }
         Hint(
             if (mode == AppPrefs.Mode.ADVANCED && onDeviceOnly) {
@@ -217,6 +244,49 @@ fun SummaryModeSection(step: Int?) {
             if (mode == AppPrefs.Mode.ADVANCED && onDeviceOnly) Icons.Rounded.Lock else Icons.Rounded.Cloud,
             Tone.NEUTRAL,
         )
+    }
+}
+
+@Composable
+private fun ToggleRow(title: String, detail: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        Switch(checked = checked, onCheckedChange = onChange)
+    }
+}
+
+/** Optional offline summariser download. */
+@Composable
+private fun LocalModelRow() {
+    val context = LocalContext.current
+    val status by io.github.fush1ft.summarised.transcribe.LocalLlm.status.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { io.github.fush1ft.summarised.transcribe.LocalLlm.refresh(context) }
+    val local = io.github.fush1ft.summarised.transcribe.LocalLlm
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text("Shrnutí bez internetu (nepovinné)", style = MaterialTheme.typography.titleSmall)
+        when (val st = status) {
+            io.github.fush1ft.summarised.transcribe.DownloadableModel.Status.Ready -> Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Gemma 4 E2B je stažená (3,1 GB).", style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { local.delete(context) }) { Text("Smazat", color = MaterialTheme.colorScheme.error) }
+            }
+            is io.github.fush1ft.summarised.transcribe.DownloadableModel.Status.Downloading -> {
+                val f = if (st.total > 0) st.bytes.toFloat() / st.total else 0f
+                androidx.compose.material3.LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth())
+                Text("Stahuji ${st.bytes / 1_000_000} z ${st.total / 1_000_000} MB", style = MaterialTheme.typography.bodySmall)
+            }
+            else -> {
+                Text(
+                    "Gemma 4 E2B (Google, Apache-2.0) shrne i bez internetu, ale pomalu (minuty). " +
+                        (if (st is io.github.fush1ft.summarised.transcribe.DownloadableModel.Status.Failed) "Stahování se přerušilo: ${st.reason}." else ""),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                OutlinedButton(onClick = { local.download(context) }) { Text("Stáhnout (3,1 GB)") }
+            }
+        }
     }
 }
 

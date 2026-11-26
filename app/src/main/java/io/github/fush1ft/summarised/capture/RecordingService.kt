@@ -132,7 +132,14 @@ class RecordingService : Service() {
 
         val title = "Nahrávka " + SimpleDateFormat("d. M. HH:mm", Locale.forLanguageTag("cs")).format(Date())
         val recordingId = runBlocking {
-            db.recordingDao().insert(RecordingEntity(title = title, createdAt = System.currentTimeMillis(), startedVia = source))
+            db.recordingDao().insert(
+                RecordingEntity(
+                    title = title,
+                    createdAt = System.currentTimeMillis(),
+                    startedVia = source,
+                    template = io.github.fush1ft.summarised.AppPrefs.defaultTemplate(this@RecordingService),
+                ),
+            )
         }
         startedAtElapsed = SystemClock.elapsedRealtime()
         CaptureController.recordingStarted(recordingId, startedAtElapsed)

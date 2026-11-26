@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (M3/M4: summaries)
+- Every bookmark is summarised once the transcript covers the two minutes after
+  it: title, short summary, key points and template extras, with the bookmark
+  position marked in the transcript sent to the model.
+- Whole-recording summary when the transcript is complete; long recordings are
+  summarised in parts and combined. Default title is replaced by the summary's.
+- Templates: lecture (terms, exam questions), meeting (decisions, tasks, open
+  questions), field work (numbers, findings, tasks); switchable per recording.
+- Summariser chain: Groq with the user's free key → Pollinations without a key
+  (paced to its 45 s limit) → Gemma 4 E2B on the phone (optional 3.1 GB
+  download). Advanced mode switches steps off or keeps everything on the phone.
+- Share a recording as Markdown: summary, bookmarks and transcript.
+- Unfinished summaries resume on the next app start.
+
 ### Added (M2: transcription)
 - On-device Czech transcription with Parakeet TDT 0.6B v3 (whisper.cpp), downloaded
   once on request (668 MB, resumable).

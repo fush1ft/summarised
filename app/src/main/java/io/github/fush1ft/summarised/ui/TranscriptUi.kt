@@ -46,6 +46,7 @@ import io.github.fush1ft.summarised.core.designsystem.component.Hint
 import io.github.fush1ft.summarised.core.designsystem.component.Pill
 import io.github.fush1ft.summarised.core.designsystem.component.SectionCard
 import io.github.fush1ft.summarised.core.designsystem.component.Tone
+import io.github.fush1ft.summarised.transcribe.DownloadableModel
 import io.github.fush1ft.summarised.transcribe.SpeechModel
 import io.github.fush1ft.summarised.transcribe.TranscriptionManager
 
@@ -62,10 +63,10 @@ fun TranscriptionSection(step: Int?) {
         "Přepis řeči",
         "Parakeet přepisuje češtinu přímo v telefonu, 7–8× rychleji než mluvíš. Zvuk nikam neodchází.",
         step = step,
-        done = status is SpeechModel.Status.Ready,
+        done = status is DownloadableModel.Status.Ready,
     ) {
         when (val s = status) {
-            SpeechModel.Status.Ready -> {
+            DownloadableModel.Status.Ready -> {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Pill("Model stažený", Tone.DONE)
                     Spacer(Modifier.width(8.dp))
@@ -87,18 +88,18 @@ fun TranscriptionSection(step: Int?) {
                     }
                 }
             }
-            is SpeechModel.Status.Downloading -> {
+            is DownloadableModel.Status.Downloading -> {
                 val f = if (s.total > 0) s.bytes.toFloat() / s.total else 0f
                 LinearProgressIndicator(progress = { f }, modifier = Modifier.fillMaxWidth().height(8.dp).clip(RoundedCornerShape(50)))
                 Text("Stahuji ${s.bytes / 1_000_000} z ${s.total / 1_000_000} MB", style = MaterialTheme.typography.bodySmall)
             }
-            is SpeechModel.Status.Failed, SpeechModel.Status.Missing -> {
-                if (s is SpeechModel.Status.Failed) {
+            is DownloadableModel.Status.Failed, DownloadableModel.Status.Missing -> {
+                if (s is DownloadableModel.Status.Failed) {
                     Hint("Stahování se přerušilo: ${s.reason}. Pokračuje od místa, kde skončilo.", Icons.Rounded.Info, Tone.ERROR)
                 }
                 if (metered) Hint("Jsi na mobilních datech. Doporučuju počkat na Wi-Fi.", Icons.Rounded.SignalCellularAlt, Tone.WARN)
                 BigButton(
-                    if (s is SpeechModel.Status.Failed) "Pokračovat ve stahování" else "Stáhnout model (${SpeechModel.APPROX_MB} MB)",
+                    if (s is DownloadableModel.Status.Failed) "Pokračovat ve stahování" else "Stáhnout model (${SpeechModel.APPROX_MB} MB)",
                     Icons.Rounded.Download,
                     tonal = step == null,
                 ) { SpeechModel.download(context) }
@@ -172,7 +173,7 @@ fun TranscriptSection(
 
         if (job == null && !recordingNow) {
             when {
-                modelStatus !is SpeechModel.Status.Ready -> Hint(
+                modelStatus !is DownloadableModel.Status.Ready -> Hint(
                     "Pro přepis je potřeba stáhnout model (${SpeechModel.APPROX_MB} MB) v Nastavení → Přepis řeči.",
                     Icons.Rounded.Download,
                     Tone.WARN,

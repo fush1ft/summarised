@@ -19,6 +19,11 @@ data class RecordingEntity(
     val startedVia: String = "app",
     /** Audio up to here has been transcribed (live or afterwards). */
     val transcribedUntilMs: Long = 0,
+    /** Summary template: LECTURE, MEETING or FIELD. */
+    val template: String = "LECTURE",
+    /** Whole-recording summary as JSON, and which model wrote it. */
+    val summaryJson: String? = null,
+    val summarisedBy: String? = null,
 )
 
 /** Audio is written in ~5-minute files, so a crash loses at most one chunk. */

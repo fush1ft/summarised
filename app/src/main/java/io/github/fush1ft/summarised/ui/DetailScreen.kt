@@ -93,6 +93,8 @@ fun DetailScreen(recordingId: Long, onBack: () -> Unit) {
         Hint("Nahrávání bylo přerušené (pád aplikace nebo vybitá baterie). Zvuk je zachovaný do posledního uložení.", Icons.Rounded.AutoAwesome, Tone.WARN)
     }
 
+    RecordingSummarySection(r, segments, bookmarks)
+
     // Player
     val total = maxOf(player.totalMs, r.durationMs, 1L)
     SectionCard("Přehrávání") {
@@ -145,11 +147,8 @@ fun DetailScreen(recordingId: Long, onBack: () -> Unit) {
                     Icon(Icons.Rounded.Delete, contentDescription = "Smazat záložku ${i + 1}")
                 }
             }
+            BookmarkSummary(b)
         }
-        Hint(
-            "Shrnutí každé záložky a celé nahrávky přibude v další verzi (M3).",
-            Icons.Rounded.AutoAwesome,
-        )
     }
 
     // Edit / delete

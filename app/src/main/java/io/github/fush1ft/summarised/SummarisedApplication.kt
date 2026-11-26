@@ -15,6 +15,8 @@ class SummarisedApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         recoverInterruptedRecordings()
+        // Pick up summaries left unfinished by a previous run.
+        io.github.fush1ft.summarised.summarise.SummaryManager.kick(this)
     }
 
     /**

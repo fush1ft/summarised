@@ -74,6 +74,7 @@ object TranscriptionManager {
             while (s.size > 0) cutAndTranscribe(app, s, force = true)
             clearProgress(recordingId)
             closeEngineIfIdle()
+            io.github.fush1ft.summarised.summarise.SummaryManager.kick(app)
         }
     }
 
@@ -110,6 +111,7 @@ object TranscriptionManager {
                 }
                 while (s.size > 0) cutAndTranscribe(app, s, force = true)
                 clearProgress(recordingId)
+                io.github.fush1ft.summarised.summarise.SummaryManager.kick(app)
             } catch (e: Exception) {
                 setProgress(recordingId, Progress(0, 0, live = false, error = e.message ?: e.javaClass.simpleName))
             } finally {

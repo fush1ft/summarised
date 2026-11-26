@@ -13,15 +13,14 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * The speech model: Parakeet TDT 0.6B v3 (NVIDIA, CC-BY-4.0), q8_0 build for
- * whisper.cpp. Chosen in M0: 7-8x faster than real time on the Pixel 10a.
- * Downloaded once, only when the user asks, and resumable.
+ * A model file downloaded once, only when the user asks, resumably (a .part
+ * file continued with an HTTP Range request).
  */
-object SpeechModel {
-    const val URL = "https://huggingface.co/ggml-org/parakeet-GGUF/resolve/main/ggml-parakeet-tdt-0.6b-v3-q8_0.bin"
-    const val APPROX_MB = 668
-    private const val FILE = "parakeet-v3-q8.bin"
-
+open class DownloadableModel(
+    val url: String,
+    val approxMb: Int,
+    private val fileName: String,
+) {
     sealed interface Status {
         data object Missing : Status
         data class Downloading(val bytes: Long, val total: Long) : Status
@@ -33,7 +32,7 @@ object SpeechModel {
     private val _status = MutableStateFlow<Status>(Status.Missing)
     val status: StateFlow<Status> = _status
 
-    fun file(context: Context): File = File(File(context.getExternalFilesDir(null), "models").apply { mkdirs() }, FILE)
+    fun file(context: Context): File = File(File(context.getExternalFilesDir(null), "models").apply { mkdirs() }, fileName)
 
     fun isReady(context: Context): Boolean = file(context).exists()
 
@@ -50,23 +49,23 @@ object SpeechModel {
     fun download(context: Context) {
         if (_status.value is Status.Downloading) return
         val app = context.applicationContext
-        _status.value = Status.Downloading(0, APPROX_MB * 1_000_000L)
+        _status.value = Status.Downloading(0, approxMb * 1_000_000L)
         scope.launch {
             val target = file(app)
             val part = File(target.path + ".part")
             try {
-                var url = URL(URL)
+                var current = URL(url)
                 var conn: HttpURLConnection
                 var redirects = 0
                 while (true) {
-                    conn = url.openConnection() as HttpURLConnection
+                    conn = current.openConnection() as HttpURLConnection
                     conn.instanceFollowRedirects = false
                     conn.connectTimeout = 20_000
                     conn.readTimeout = 60_000
                     if (part.length() > 0) conn.setRequestProperty("Range", "bytes=${part.length()}-")
                     val code = conn.responseCode
                     if (code in 300..399 && redirects++ < 8) {
-                        url = URL(url, conn.getHeaderField("Location"))
+                        current = URL(current, conn.getHeaderField("Location"))
                         conn.disconnect()
                         continue
                     }
@@ -106,3 +105,26 @@ object SpeechModel {
         }
     }
 }
+
+/**
+ * Speech model: Parakeet TDT 0.6B v3 (NVIDIA, CC-BY-4.0), q8_0 build for
+ * whisper.cpp. Chosen in M0: 7-8x faster than real time on the Pixel 10a.
+ */
+object SpeechModel : DownloadableModel(
+    url = "https://huggingface.co/ggml-org/parakeet-GGUF/resolve/main/ggml-parakeet-tdt-0.6b-v3-q8_0.bin",
+    approxMb = 668,
+    fileName = "parakeet-v3-q8.bin",
+) {
+    const val APPROX_MB = 668
+}
+
+/**
+ * Offline summary fallback: Gemma 4 E2B (Google, Apache-2.0), Q4_K_M. Best
+ * Czech of the on-device candidates in M0, but slow; used only when the cloud
+ * steps are off or unreachable.
+ */
+object LocalLlm : DownloadableModel(
+    url = "https://huggingface.co/unsloth/gemma-4-E2B-it-GGUF/resolve/main/gemma-4-E2B-it-Q4_K_M.gguf",
+    approxMb = 3106,
+    fileName = "gemma-4-e2b-q4km.gguf",
+)

@@ -32,6 +32,18 @@ object AppPrefs {
     fun liveTranscription(context: Context) = prefs(context).getBoolean("live_transcription", true)
     fun setLiveTranscription(context: Context, value: Boolean) = prefs(context).edit { putBoolean("live_transcription", value) }
 
+    // Advanced mode: which summary steps are on.
+    fun useGroq(context: Context) = prefs(context).getBoolean("use_groq", true)
+    fun setUseGroq(context: Context, value: Boolean) = prefs(context).edit { putBoolean("use_groq", value) }
+    fun usePollinations(context: Context) = prefs(context).getBoolean("use_pollinations", true)
+    fun setUsePollinations(context: Context, value: Boolean) = prefs(context).edit { putBoolean("use_pollinations", value) }
+    fun useLocal(context: Context) = prefs(context).getBoolean("use_local", true)
+    fun setUseLocal(context: Context, value: Boolean) = prefs(context).edit { putBoolean("use_local", value) }
+
+    /** Template for new recordings: LECTURE, MEETING or FIELD. */
+    fun defaultTemplate(context: Context): String = prefs(context).getString("default_template", "LECTURE") ?: "LECTURE"
+    fun setDefaultTemplate(context: Context, value: String) = prefs(context).edit { putString("default_template", value) }
+
     fun gestureConfirmed(context: Context) = prefs(context).getBoolean("gesture_done", false)
     fun setGestureConfirmed(context: Context) = prefs(context).edit { putBoolean("gesture_done", true) }
 }
