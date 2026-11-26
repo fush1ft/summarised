@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added (M1: capture)
+- Hold the power button to start recording and again to add a bookmark, also on
+  the lock screen, via the digital-assistant role; haptic confirmation for start,
+  bookmark, undo, stop and errors.
+- Recording in a foreground service as ~5-minute Opus chunks (WAV fallback),
+  saved every 30 s; a recording cut off by a crash is kept and marked as
+  interrupted.
+- Notification with Bookmark, Undo and Stop, usable on the lock screen.
+- Recordings list, detail with bookmark playback (10 s lead-in), rename, delete.
+- First-run setup: permissions, assistant role, power-button gesture, summary
+  mode (Easy with an optional free Groq key, or Advanced) and vibration strength.
+
+### Changed
+- Minimum Android version is now 13 (API 33).
+- Database schema rebuilt for recordings, audio chunks, bookmarks and segments.
+- Hilt and Navigation removed from the app: fewer moving parts for three screens.
+
 ### Added
 - Multi-module project scaffold: `:app`, `:core:designsystem`, `:core:database`.
 - Material 3 theme with dynamic color and an indigo/teal fallback palette.

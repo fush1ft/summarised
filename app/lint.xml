@@ -13,4 +13,15 @@
     <issue id="ObsoleteSdkInt">
         <ignore path="src/main/res/mipmap-anydpi-v26" />
     </issue>
+
+    <!-- The UI is Czech-only for now and its text lives in code on purpose;
+         localisation is a later milestone. -->
+    <issue id="SetTextI18n" severity="ignore" />
+    <!-- Numbers are formatted in the user's locale deliberately (decimal comma in Czech). -->
+    <issue id="DefaultLocale" severity="ignore" />
+    <!-- The digital-assistant picker only lists apps that export a recognition
+         service; ours is a stub that answers every request with an error. -->
+    <issue id="ExportedService">
+        <ignore path="src/main/AndroidManifest.xml" />
+    </issue>
 </lint>

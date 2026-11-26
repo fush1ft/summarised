@@ -3,8 +3,6 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-    alias(libs.plugins.ksp)
-    alias(libs.plugins.hilt)
 }
 
 android {
@@ -18,12 +16,24 @@ android {
 
     defaultConfig {
         applicationId = "io.github.fush1ft.summarised"
-        minSdk = 29
+        // Android 13+: the haptic, notification and assistant APIs the app is built on.
+        minSdk = 33
         targetSdk = 37
-        versionCode = 1
-        versionName = "0.1.0-alpha01"
+        versionCode = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
+        versionName = "0.3.0-m1"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    // Debug and preview builds share one public test key, so each CI build installs
+    // over the previous one. Real releases will need their own private key.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = rootProject.file("lab/debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
     }
 
     buildTypes {
@@ -75,14 +85,7 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 
-    implementation(libs.androidx.navigation.compose)
-
-    implementation(libs.hilt.android)
-    ksp(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
-
-    implementation(libs.androidx.work.runtime.ktx)
-    implementation(libs.androidx.datastore.preferences)
+    implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
     testImplementation(libs.truth)

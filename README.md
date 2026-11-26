@@ -49,7 +49,7 @@ offer to download the SDK.
 ./gradlew lintDebug              # lint (warnings are errors)
 ```
 
-Targets `minSdk` 29 (Android 10) and `compileSdk` 37. The on-device models are
+Targets `minSdk` 33 (Android 13) and `compileSdk` 37. The on-device models are
 tuned for 8 GB of RAM (reference device: Pixel 10a).
 
 ## Contributing

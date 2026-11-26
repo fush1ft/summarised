@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<voice-interaction-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:recognitionService="io.github.fush1ft.summarised.assist.StubRecognitionService"
+    android:sessionService="io.github.fush1ft.summarised.assist.CaptureSessionService"
+    android:settingsActivity="io.github.fush1ft.summarised.MainActivity"
+    android:supportsAssist="true"
+    android:supportsLaunchVoiceAssistFromKeyguard="true" />

@@ -1,39 +1,45 @@
 package io.github.fush1ft.summarised.core.database
 
+import android.content.Context
 import androidx.room.Database
+import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
 import androidx.room.TypeConverters
-import io.github.fush1ft.summarised.core.database.dao.ChatMessageDao
-import io.github.fush1ft.summarised.core.database.dao.RecordingDao
-import io.github.fush1ft.summarised.core.database.dao.SegmentDao
-import io.github.fush1ft.summarised.core.database.dao.SpeakerDao
-import io.github.fush1ft.summarised.core.database.dao.SummaryDao
-import io.github.fush1ft.summarised.core.database.entity.ChatMessageEntity
-import io.github.fush1ft.summarised.core.database.entity.RecordingEntity
-import io.github.fush1ft.summarised.core.database.entity.SegmentEntity
-import io.github.fush1ft.summarised.core.database.entity.SpeakerEntity
-import io.github.fush1ft.summarised.core.database.entity.SummaryEntity
 
 @Database(
-    entities = [
-        RecordingEntity::class,
-        SegmentEntity::class,
-        SpeakerEntity::class,
-        SummaryEntity::class,
-        ChatMessageEntity::class,
-    ],
-    version = 1,
+    entities = [RecordingEntity::class, AudioChunkEntity::class, BookmarkEntity::class, SegmentEntity::class],
+    version = 2,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
 abstract class SummarisedDatabase : RoomDatabase() {
     abstract fun recordingDao(): RecordingDao
+    abstract fun audioChunkDao(): AudioChunkDao
+    abstract fun bookmarkDao(): BookmarkDao
     abstract fun segmentDao(): SegmentDao
-    abstract fun speakerDao(): SpeakerDao
-    abstract fun summaryDao(): SummaryDao
-    abstract fun chatMessageDao(): ChatMessageDao
 
     companion object {
-        const val NAME = "summarised.db"
+        private const val NAME = "summarised.db"
+
+        @Volatile private var instance: SummarisedDatabase? = null
+
+        fun get(context: Context): SummarisedDatabase =
+            instance ?: synchronized(this) {
+                instance ?: Room.databaseBuilder(context.applicationContext, SummarisedDatabase::class.java, NAME)
+                    // Version 1 only ever shipped in pre-alpha builds of the old plan.
+                    .fallbackToDestructiveMigrationFrom(true, 1)
+                    .build()
+                    .also { instance = it }
+            }
     }
+}
+
+/** Enums are stored by name, so reordering them never reinterprets old rows. */
+class Converters {
+    @TypeConverter
+    fun toStatus(value: String): RecordingStatus = RecordingStatus.valueOf(value)
+
+    @TypeConverter
+    fun fromStatus(status: RecordingStatus): String = status.name
 }
