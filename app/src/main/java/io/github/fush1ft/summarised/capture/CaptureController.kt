@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.SystemClock
 import io.github.fush1ft.summarised.core.database.BookmarkEntity
 import io.github.fush1ft.summarised.core.database.SummarisedDatabase
+import io.github.fush1ft.summarised.summarise.SummaryManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -77,7 +78,7 @@ object CaptureController {
             )
             replacePlaceholder(placeholder, id)
             // Summarised once the transcript covers the two minutes after it.
-            io.github.fush1ft.summarised.summarise.SummaryManager.queueBookmark(context, id, 30)
+            SummaryManager.queueBookmark(context, id, 30)
         }
         return Outcome.Bookmarked(index, at)
     }
