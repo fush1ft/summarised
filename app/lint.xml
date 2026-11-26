@@ -24,4 +24,9 @@
     <issue id="ExportedService">
         <ignore path="src/main/AndroidManifest.xml" />
     </issue>
+
+    <!-- The on-device inference core is built for arm64 only on purpose: the
+         app targets ARM phones, and an x86_64 build of llama.cpp/whisper.cpp
+         would double the native build and APK size for no user. -->
+    <issue id="ChromeOsAbiSupport" severity="ignore" />
 </lint>
