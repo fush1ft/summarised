@@ -97,7 +97,11 @@ object SummaryManager {
             val a = Summariser.run(context, Prompts.bookmark(Prompts.Template.of(rec.template), text, formatDuration(b.atMs)), 900)
             val title = a.json.optString("nadpis").takeIf { it.isNotBlank() }
             runBlocking { db.bookmarkDao().setSummary(id, title, a.json.toString(), a.by) }
-        }.onFailure { setError(bookmarkKey(id), it.message ?: "chyba") }
+        }.onFailure {
+            val stillRecording = runBlocking { db.recordingDao().get(rec.id) }?.status == RecordingStatus.RECORDING
+            // While recording (offline, or only the local model left), try again later.
+            if (stillRecording) queueBookmark(context, id, 120) else setError(bookmarkKey(id), it.message ?: "chyba")
+        }
     }
 
     private fun withMarker(segments: List<SegmentEntity>, atMs: Long): String {

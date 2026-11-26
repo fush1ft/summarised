@@ -124,6 +124,13 @@ object Summariser {
     private fun local(context: Context, user: String, maxTokens: Int): Answer? {
         val model = LocalLlm.file(context)
         if (!model.exists()) return null
+        // Gemma (3 GB) next to Parakeet while recording risks running out of memory
+        // on an 8 GB phone; the caller retries once the recording ends.
+        if (io.github.fush1ft.summarised.capture.CaptureController.state.value.phase ==
+            io.github.fush1ft.summarised.capture.CaptureController.Phase.RECORDING
+        ) {
+            throw Failed("lokální model počká na konec nahrávání")
+        }
         val r = Native.json(
             Native.instance.generate(model.path, Prompts.SYSTEM.toByteArray(), user.toByteArray(), 8192, 4, minOf(maxTokens, 900), 0f) { },
         )
