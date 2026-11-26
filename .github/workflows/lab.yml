@@ -74,8 +74,9 @@ jobs:
           Je to debug build podepsaný standardním debug klíčem: podpis nic
           neověřuje, takže ho instaluj jen odsud.
 
-          Postup testů je v `docs/M0.md`. Na konci v záložce **Report** zkopíruj
-          výsledky a vlož je do konverzace.
+          Aplikace tě provede třemi kroky (vypínač, přepis řeči, shrnutí). Na konci
+          v kroku **Poslat výsledky** zkopíruj souhrn a vlož ho do konverzace.
+          Podrobnosti jsou v `docs/M0.md`.
           NOTES
           )" \
             "${{ steps.artifact.outputs.name }}"
