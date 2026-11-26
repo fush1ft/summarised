@@ -17,6 +17,8 @@ data class RecordingEntity(
     val status: RecordingStatus = RecordingStatus.RECORDING,
     /** How it was started: power-hold, app, tile, notification. */
     val startedVia: String = "app",
+    /** Audio up to here has been transcribed (live or afterwards). */
+    val transcribedUntilMs: Long = 0,
 )
 
 /** Audio is written in ~5-minute files, so a crash loses at most one chunk. */

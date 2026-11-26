@@ -28,6 +28,10 @@ object AppPrefs {
     fun hapticUsage(context: Context): String = prefs(context).getString("haptic_usage", "ALARM") ?: "ALARM"
     fun setHapticUsage(context: Context, usage: String) = prefs(context).edit { putString("haptic_usage", usage) }
 
+    /** Transcribe while recording (needs the speech model). */
+    fun liveTranscription(context: Context) = prefs(context).getBoolean("live_transcription", true)
+    fun setLiveTranscription(context: Context, value: Boolean) = prefs(context).edit { putBoolean("live_transcription", value) }
+
     fun gestureConfirmed(context: Context) = prefs(context).getBoolean("gesture_done", false)
     fun setGestureConfirmed(context: Context) = prefs(context).edit { putBoolean("gesture_done", true) }
 }

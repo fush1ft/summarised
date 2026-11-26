@@ -6,10 +6,12 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverter
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [RecordingEntity::class, AudioChunkEntity::class, BookmarkEntity::class, SegmentEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = true,
 )
 @TypeConverters(Converters::class)
@@ -29,9 +31,17 @@ abstract class SummarisedDatabase : RoomDatabase() {
                 instance ?: Room.databaseBuilder(context.applicationContext, SummarisedDatabase::class.java, NAME)
                     // Version 1 only ever shipped in pre-alpha builds of the old plan.
                     .fallbackToDestructiveMigrationFrom(true, 1)
+                    .addMigrations(MIGRATION_2_3)
                     .build()
                     .also { instance = it }
             }
+    }
+}
+
+/** M2: transcription progress per recording. */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE recordings ADD COLUMN transcribedUntilMs INTEGER NOT NULL DEFAULT 0")
     }
 }
 

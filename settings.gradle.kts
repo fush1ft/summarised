@@ -25,4 +25,5 @@ rootProject.name = "Summarised"
 include(":app")
 include(":core:designsystem")
 include(":core:database")
+include(":core:inference")
 include(":lab")

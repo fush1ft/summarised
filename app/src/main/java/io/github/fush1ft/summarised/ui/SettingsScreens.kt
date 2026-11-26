@@ -69,13 +69,14 @@ fun OnboardingScreen(onDone: () -> Unit) {
     Text("Vítej v Summarised", style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.SemiBold)
     Text(
         "Nahrávej přednášky a schůzky celé hodiny. Když zazní něco důležitého, podrž vypínač a telefon si to označí. " +
-            "Tři krátké kroky a můžeš začít.",
+            "Pár krátkých kroků a můžeš začít.",
         style = MaterialTheme.typography.bodyLarge,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     SetupSection(step = 1)
     SummaryModeSection(step = 2)
-    HapticsSection(step = 3)
+    TranscriptionSection(step = 3)
+    HapticsSection(step = 4)
     BigButton("Hotovo, začít", Icons.Rounded.CheckCircle) { onDone() }
     Text(
         "Všechno půjde později změnit v Nastavení.",
@@ -89,6 +90,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     ScreenHeader("Nastavení", null, onBack)
     SetupSection(step = null)
+    TranscriptionSection(step = null)
     SummaryModeSection(step = null)
     HapticsSection(step = null)
     val version = remember {

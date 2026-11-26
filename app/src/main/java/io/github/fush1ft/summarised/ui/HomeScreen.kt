@@ -20,6 +20,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Bookmark
 import androidx.compose.material.icons.rounded.ErrorOutline
+import androidx.compose.material.icons.rounded.GraphicEq
 import androidx.compose.material.icons.rounded.Mic
 import androidx.compose.material.icons.rounded.PowerSettingsNew
 import androidx.compose.material.icons.rounded.Settings
@@ -61,6 +62,7 @@ import io.github.fush1ft.summarised.core.designsystem.component.Pill
 import io.github.fush1ft.summarised.core.designsystem.component.PulsingDot
 import io.github.fush1ft.summarised.core.designsystem.component.SectionCard
 import io.github.fush1ft.summarised.core.designsystem.component.Tone
+import io.github.fush1ft.summarised.transcribe.SpeechModel
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -84,6 +86,12 @@ fun HomeScreen(onOpen: (Long) -> Unit, onSettings: () -> Unit) {
             Icons.Rounded.PowerSettingsNew,
             Tone.WARN,
         )
+    }
+
+    val model by SpeechModel.status.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { SpeechModel.refresh(context) }
+    if (model is SpeechModel.Status.Missing) {
+        Hint("Přepis řeči je vypnutý: v Nastavení si stáhni model (668 MB).", Icons.Rounded.GraphicEq, Tone.NEUTRAL)
     }
 
     RecordCard()
@@ -120,6 +128,8 @@ private fun RecordCard() {
         }
     }
     val recording = state.phase == CaptureController.Phase.RECORDING
+    val db = remember { SummarisedDatabase.get(context) }
+    val lastLine by remember(state.recordingId) { db.segmentDao().observeLast(state.recordingId) }.collectAsStateWithLifecycle(null)
     Surface(
         color = if (recording) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
         shape = RoundedCornerShape(28.dp),
@@ -139,6 +149,9 @@ private fun RecordCard() {
                         else "Záložky: " + state.bookmarks.joinToString("  ") { formatDuration(it.atMs) },
                         style = MaterialTheme.typography.bodyLarge,
                     )
+                    lastLine?.let { line ->
+                        Text("„${line.text}“", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onErrorContainer, maxLines = 3)
+                    }
                     if (state.silenced) {
                         Hint("Android posílá ticho: mikrofon je zablokovaný jinou aplikací.", Icons.Rounded.Warning, Tone.ERROR)
                     }

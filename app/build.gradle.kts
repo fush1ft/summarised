@@ -20,7 +20,12 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
-        versionName = "0.3.0-m1"
+        versionName = "0.4.0-m2"
+
+        // The inference core is built for arm64 only.
+        ndk {
+            abiFilters += "arm64-v8a"
+        }
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -70,6 +75,7 @@ android {
 dependencies {
     implementation(project(":core:designsystem"))
     implementation(project(":core:database"))
+    implementation(project(":core:inference"))
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)

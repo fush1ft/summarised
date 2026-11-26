@@ -66,6 +66,7 @@ fun DetailScreen(recordingId: Long, onBack: () -> Unit) {
     val recording by remember(recordingId) { db.recordingDao().observe(recordingId) }.collectAsStateWithLifecycle(null)
     val chunks by remember(recordingId) { db.audioChunkDao().observe(recordingId) }.collectAsStateWithLifecycle(emptyList())
     val bookmarks by remember(recordingId) { db.bookmarkDao().observe(recordingId) }.collectAsStateWithLifecycle(emptyList())
+    val segments by remember(recordingId) { db.segmentDao().observe(recordingId) }.collectAsStateWithLifecycle(emptyList())
     val player = remember { ChunkPlayer() }
     var position by remember { mutableLongStateOf(0L) }
     var playing by remember { mutableStateOf(false) }
@@ -117,6 +118,15 @@ fun DetailScreen(recordingId: Long, onBack: () -> Unit) {
         )
     }
 
+    TranscriptSection(
+        recordingId = r.id,
+        durationMs = r.durationMs,
+        segments = segments,
+        bookmarks = bookmarks,
+        recordingNow = r.status == RecordingStatus.RECORDING,
+        onPlay = { player.playFrom(it) },
+    )
+
     // Bookmarks
     SectionCard("Záložky", if (bookmarks.isEmpty()) "V téhle nahrávce žádné nejsou." else "Klepnutím přehraješ ${LEAD_IN_MS / 1000} s před záložkou.") {
         bookmarks.forEachIndexed { i, b ->
@@ -137,7 +147,7 @@ fun DetailScreen(recordingId: Long, onBack: () -> Unit) {
             }
         }
         Hint(
-            "Shrnutí každé záložky a celé nahrávky přibude v dalších verzích: přepis (M2), pak shrnutí (M3).",
+            "Shrnutí každé záložky a celé nahrávky přibude v další verzi (M3).",
             Icons.Rounded.AutoAwesome,
         )
     }

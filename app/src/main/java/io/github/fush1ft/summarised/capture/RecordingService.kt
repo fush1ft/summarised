@@ -21,6 +21,7 @@ import io.github.fush1ft.summarised.core.database.AudioChunkEntity
 import io.github.fush1ft.summarised.core.database.RecordingEntity
 import io.github.fush1ft.summarised.core.database.RecordingStatus
 import io.github.fush1ft.summarised.core.database.SummarisedDatabase
+import io.github.fush1ft.summarised.transcribe.TranscriptionManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -135,6 +136,8 @@ class RecordingService : Service() {
         }
         startedAtElapsed = SystemClock.elapsedRealtime()
         CaptureController.recordingStarted(recordingId, startedAtElapsed)
+        val live = TranscriptionManager.liveEnabled(this)
+        if (live) TranscriptionManager.startLive(this, recordingId)
         scope.launch { Haptics.play(this@RecordingService, Haptics.Pattern.START) }
 
         val dir = audioDir(this)
@@ -157,6 +160,7 @@ class RecordingService : Service() {
                     continue
                 }
                 writer.write(buf, n)
+                if (live) TranscriptionManager.feed(this, recordingId, buf, n)
                 for (i in 0 until n) peak = maxOf(peak, kotlin.math.abs(buf[i].toInt()))
                 windowSamples += n
                 if (windowSamples >= SAMPLE_RATE * 5) {
@@ -198,6 +202,7 @@ class RecordingService : Service() {
                 db.audioChunkDao().updateDuration(chunkId, chunkMs)
                 db.recordingDao().finish(recordingId, total, RecordingStatus.READY)
             }
+            if (live) TranscriptionManager.finishLive(this, recordingId)
         }
     }
 

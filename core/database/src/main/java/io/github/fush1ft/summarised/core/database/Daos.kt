@@ -25,6 +25,12 @@ interface RecordingDao {
     @Query("UPDATE recordings SET durationMs = :durationMs WHERE id = :id")
     suspend fun updateDuration(id: Long, durationMs: Long)
 
+    @Query("UPDATE recordings SET transcribedUntilMs = :untilMs WHERE id = :id")
+    suspend fun setTranscribedUntil(id: Long, untilMs: Long)
+
+    @Query("SELECT * FROM recordings WHERE id = :id")
+    suspend fun get(id: Long): RecordingEntity?
+
     @Query("UPDATE recordings SET title = :title WHERE id = :id")
     suspend fun rename(id: Long, title: String)
 
@@ -69,6 +75,15 @@ interface SegmentDao {
     @Insert
     suspend fun insert(segment: SegmentEntity): Long
 
+    @Insert
+    suspend fun insertAll(segments: List<SegmentEntity>)
+
     @Query("SELECT * FROM segments WHERE recordingId = :recordingId ORDER BY startMs")
     fun observe(recordingId: Long): Flow<List<SegmentEntity>>
+
+    @Query("SELECT * FROM segments WHERE recordingId = :recordingId ORDER BY startMs DESC LIMIT 1")
+    fun observeLast(recordingId: Long): Flow<SegmentEntity?>
+
+    @Query("DELETE FROM segments WHERE recordingId = :recordingId")
+    suspend fun deleteFor(recordingId: Long)
 }
