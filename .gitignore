@@ -26,6 +26,8 @@ render.experimental.xml
 # Keystore files
 *.jks
 *.keystore
+# Public test key for the throwaway lab app only, see lab/build.gradle.kts.
+!lab/debug.keystore
 
 # Google Services (e.g. APIs or Firebase)
 google-services.json

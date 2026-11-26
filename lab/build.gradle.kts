@@ -22,7 +22,8 @@ android {
         // The lab only has to run on the reference phone (Pixel 10a, Android 16+).
         minSdk = 33
         targetSdk = 37
-        versionCode = 1
+        // Every CI build is a strict upgrade of the previous one.
+        versionCode = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
         versionName = "m0-lab"
 
         ndk {
@@ -35,6 +36,19 @@ android {
                 arguments += "-DCMAKE_BUILD_TYPE=Release"
                 arguments += "-DANDROID_STL=c++_static"
             }
+        }
+    }
+
+    // One fixed, deliberately public key for the lab. Without it every CI run
+    // signs with a freshly generated debug key, and Android refuses to install a
+    // new build over the previous one ("App not installed"). It protects
+    // nothing and must never sign the real app.
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
         }
     }
 
