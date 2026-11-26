@@ -37,6 +37,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,7 +72,11 @@ fun AsrScreen(onBack: () -> Unit) {
     val level by BenchRecorder.level.collectAsStateWithLifecycle()
     val busy by BenchRunner.busy.collectAsStateWithLifecycle()
     val results by Results.all.collectAsStateWithLifecycle()
-    var passage by remember { mutableStateOf(Texts.passages.first()) }
+    // Open on the text being recorded, if any, so a recording left running
+    // in the background is never hidden behind a different text.
+    var passage by remember { mutableStateOf(Texts.passages.firstOrNull { it.id == BenchRecorder.recordingId.value } ?: Texts.passages.first()) }
+    // Reading a text only makes sense on this screen: leaving it ends the take.
+    DisposableEffect(Unit) { onDispose { BenchRecorder.stop() } }
     var threads by remember { mutableIntStateOf(4) }
     val downloading = progress.values.any { it.active }
     KeepScreenOn(busy != null || recordingId != null || downloading)
