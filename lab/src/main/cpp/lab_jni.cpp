@@ -264,25 +264,39 @@ Java_io_github_fush1ft_summarised_lab_bench_Native_generate(
     const llama_vocab * vocab = llama_model_get_vocab(model);
 
     // Chat template from the GGUF, falling back to ChatML.
-    std::vector<llama_chat_message> msgs;
-    if (!system.empty()) msgs.push_back({"system", system.c_str()});
-    msgs.push_back({"user", user.c_str()});
     const char * tmpl = llama_model_chat_template(model, nullptr);
-    std::vector<char> buf(2 * (system.size() + user.size()) + 1024);
-    int32_t len = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
-    if (len > static_cast<int32_t>(buf.size())) {
-        buf.resize(static_cast<size_t>(len));
-        len = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
+    std::string prompt;
+    std::string prompt_format;
+    if (tmpl != nullptr && std::string(tmpl).find("<|turn>") != std::string::npos) {
+        // Gemma 4 uses a turn format the legacy template engine does not know.
+        // Mirrors the official Jinja template with thinking disabled: an empty
+        // thought channel right after the model turn opens.
+        prompt_format = "gemma4";
+        if (!system.empty()) prompt += "<|turn>system\n" + system + "<turn|>\n";
+        prompt += "<|turn>user\n" + user + "<turn|>\n";
+        prompt += "<|turn>model\n<|channel>thought\n<channel|>";
+    } else {
+        std::vector<llama_chat_message> msgs;
+        if (!system.empty()) msgs.push_back({"system", system.c_str()});
+        msgs.push_back({"user", user.c_str()});
+        std::vector<char> buf(2 * (system.size() + user.size()) + 1024);
+        int32_t len = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
+        if (len > static_cast<int32_t>(buf.size())) {
+            buf.resize(static_cast<size_t>(len));
+            len = llama_chat_apply_template(tmpl, msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
+        }
+        prompt_format = "gguf-template";
+        if (len < 0) {
+            len = llama_chat_apply_template("chatml", msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
+            prompt_format = "chatml-fallback";
+        }
+        if (len < 0) {
+            llama_free(ctx);
+            llama_model_free(model);
+            return to_bytes(env, error_json("llama: could not apply a chat template"));
+        }
+        prompt.assign(buf.data(), static_cast<size_t>(len));
     }
-    if (len < 0) {
-        len = llama_chat_apply_template("chatml", msgs.data(), msgs.size(), true, buf.data(), static_cast<int32_t>(buf.size()));
-    }
-    if (len < 0) {
-        llama_free(ctx);
-        llama_model_free(model);
-        return to_bytes(env, error_json("llama: could not apply a chat template"));
-    }
-    const std::string prompt(buf.data(), static_cast<size_t>(len));
 
     const int n_prompt = -llama_tokenize(vocab, prompt.c_str(), static_cast<int32_t>(prompt.size()), nullptr, 0, true, true);
     std::vector<llama_token> tokens(static_cast<size_t>(n_prompt));
@@ -363,6 +377,7 @@ Java_io_github_fush1ft_summarised_lab_bench_Native_generate(
         .boolean("ok", true)
         .boolean("cancelled", g_cancel.load())
         .str("model", desc)
+        .str("prompt_format", prompt_format)
         .num("load_ms", load_ms)
         .integer("prompt_tokens", n_prompt)
         .num("prompt_ms", prompt_ms)

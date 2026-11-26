@@ -18,16 +18,18 @@ import java.io.File
 object BenchRunner {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
-    private val _busy = MutableStateFlow<String?>(null)
+    data class Busy(val title: String, val step: Int, val total: Int)
+
+    private val _busy = MutableStateFlow<Busy?>(null)
     /** What is running right now, or null. */
-    val busy: StateFlow<String?> = _busy
+    val busy: StateFlow<Busy?> = _busy
 
     private val _stream = MutableStateFlow("")
-    /** Live LLM output of the current/last run. */
+    /** Live output of the LLM that is generating right now. */
     val stream: StateFlow<String> = _stream
 
-    private val _lastLlm = MutableStateFlow<JSONObject?>(null)
-    val lastLlm: StateFlow<JSONObject?> = _lastLlm
+    private val _streamingModel = MutableStateFlow<String?>(null)
+    val streamingModel: StateFlow<String?> = _streamingModel
 
     @Volatile private var cancelled = false
 
@@ -49,12 +51,17 @@ object BenchRunner {
                 }
                 jobs.forEachIndexed { i, (model, passage, wav) ->
                     if (cancelled) return@launch
-                    _busy.value = "Přepis ${i + 1}/${jobs.size}: ${model.name} · ${passage.title}"
+                    _busy.value = Busy("${Models.displayName(model)} · ${passage.title}", i + 1, jobs.size)
+                    markStart("asr", model)
                     val engine = if (Models.kindOf(model) == ModelKind.PARAKEET) 1 else 0
                     val samples = WavWriter.readFloats(wav)
                     val r = Native.json(Native.instance.transcribe(engine, model.path, samples, threads, "cs"))
                     if (!r.optBoolean("ok")) {
                         EventLog.add("ASR", "${model.name}: ${r.optString("error")}")
+                        Results.add(
+                            "asr_error",
+                            JSONObject().put("model", Models.displayName(model)).put("error", r.optString("error")),
+                        )
                         return@forEachIndexed
                     }
                     val text = r.optString("text")
@@ -63,7 +70,8 @@ object BenchRunner {
                     Results.add(
                         "asr",
                         JSONObject()
-                            .put("model", model.name)
+                            .put("model", Models.displayName(model))
+                            .put("model_file", model.name)
                             .put("passage", passage.id)
                             .put("threads", threads)
                             .put("audio_ms", r.optDouble("audio_ms"))
@@ -85,56 +93,75 @@ object BenchRunner {
         }
     }
 
-    data class LlmJob(
-        val model: File,
-        val template: Texts.Template,
-        val sourceLabel: String,
-        val transcript: String,
-        val atLabel: String,
-        val threads: Int,
-        val maxTokens: Int,
-        val temperature: Float,
-        val nCtx: Int = 4096,
-    )
+    data class LlmSource(val label: String, val template: Texts.Template, val transcript: String, val at: String)
 
-    fun runLlm(job: LlmJob) {
-        if (_busy.value != null) return
+    data class LlmParams(val threads: Int = 4, val maxTokens: Int = 512, val temperature: Float = 0f, val nCtx: Int = 4096)
+
+    /** Runs every model in [models] on the same source, one after another. */
+    fun runLlms(models: List<File>, source: LlmSource, template: Texts.Template, params: LlmParams) {
+        if (_busy.value != null || models.isEmpty()) return
         cancelled = false
-        _stream.value = ""
-        _lastLlm.value = null
         scope.launch {
-            _busy.value = "LLM: ${job.model.name}"
             try {
-                var user = Texts.bookmarkPrompt(job.template, job.transcript, job.atLabel)
-                // Hybrid Qwen3 models think out loud by default; the 2507 instruct ones don't.
-                val name = job.model.name.lowercase()
-                if (name.startsWith("qwen3") && !name.contains("2507")) user += " /no_think"
-                val bytes = ByteArrayOutputStream()
-                val r = Native.json(
-                    Native.instance.generate(
-                        job.model.path,
-                        Texts.SYSTEM_PROMPT.toByteArray(),
-                        user.toByteArray(),
-                        job.nCtx, job.threads, job.maxTokens, job.temperature,
-                    ) { piece ->
-                        bytes.write(piece)
-                        _stream.value = bytes.toString(Charsets.UTF_8.name())
-                    },
-                )
-                if (!r.optBoolean("ok")) {
-                    EventLog.add("LLM", "${job.model.name}: ${r.optString("error")}")
-                    _stream.value = "Chyba: ${r.optString("error")}"
-                    return@launch
+                models.forEachIndexed { i, model ->
+                    if (cancelled) return@launch
+                    _busy.value = Busy(Models.displayName(model), i + 1, models.size)
+                    runOne(model, source, template, params)
                 }
-                val text = r.optString("text")
-                val parsed = Texts.extractJson(text)
-                val result = JSONObject()
-                    .put("model", job.model.name)
-                    .put("template", job.template.label)
-                    .put("source", job.sourceLabel)
-                    .put("threads", job.threads)
-                    .put("n_ctx", job.nCtx)
-                    .put("temperature", job.temperature.toDouble())
+            } finally {
+                _busy.value = null
+                _streamingModel.value = null
+            }
+        }
+    }
+
+    private fun runOne(model: File, source: LlmSource, template: Texts.Template, params: LlmParams) {
+        _stream.value = ""
+        _streamingModel.value = model.name
+        markStart("llm", model, source.label, template.label)
+        try {
+            var user = Texts.bookmarkPrompt(template, source.transcript, source.at)
+            // Hybrid Qwen3 models think out loud by default; the 2507 instruct ones don't.
+            val name = model.name.lowercase()
+            if (name.startsWith("qwen3") && !name.contains("2507")) user += " /no_think"
+            val bytes = ByteArrayOutputStream()
+            val r = Native.json(
+                Native.instance.generate(
+                    model.path,
+                    Texts.SYSTEM_PROMPT.toByteArray(),
+                    user.toByteArray(),
+                    params.nCtx, params.threads, params.maxTokens, params.temperature,
+                ) { piece ->
+                    bytes.write(piece)
+                    _stream.value = bytes.toString(Charsets.UTF_8.name())
+                },
+            )
+            if (!r.optBoolean("ok")) {
+                EventLog.add("LLM", "${model.name}: ${r.optString("error")}")
+                Results.add(
+                    "llm",
+                    JSONObject()
+                        .put("model", Models.displayName(model))
+                        .put("model_file", model.name)
+                        .put("source", source.label)
+                        .put("template", template.label)
+                        .put("error", r.optString("error")),
+                )
+                return
+            }
+            val text = r.optString("text")
+            val parsed = Texts.extractJson(text)
+            Results.add(
+                "llm",
+                JSONObject()
+                    .put("model", Models.displayName(model))
+                    .put("model_file", model.name)
+                    .put("template", template.label)
+                    .put("source", source.label)
+                    .put("prompt_format", r.optString("prompt_format"))
+                    .put("threads", params.threads)
+                    .put("n_ctx", params.nCtx)
+                    .put("temperature", params.temperature.toDouble())
                     .put("load_ms", r.optDouble("load_ms"))
                     .put("prompt_tokens", r.optInt("prompt_tokens"))
                     .put("prompt_ms", r.optDouble("prompt_ms"))
@@ -142,25 +169,58 @@ object BenchRunner {
                     .put("gen_ms", r.optDouble("gen_ms"))
                     .put("cancelled", r.optBoolean("cancelled"))
                     .put("json_valid", parsed != null)
-                    .put("text", text)
-                Results.add("llm", result)
-                _lastLlm.value = result
-                EventLog.add(
-                    "LLM",
-                    "${job.model.name}: prefill ${r.optInt("prompt_tokens")} tok in ${"%.1f".format(r.optDouble("prompt_ms") / 1000)} s, " +
-                        "gen ${r.optInt("gen_tokens")} tok in ${"%.1f".format(r.optDouble("gen_ms") / 1000)} s, JSON ${parsed != null}",
-                )
-            } catch (e: Throwable) {
-                EventLog.add("LLM", "crashed: ${e.javaClass.simpleName}: ${e.message}")
-                _stream.value = "Chyba: ${e.message}"
-            } finally {
-                _busy.value = null
-            }
+                    .put("text", text),
+            )
+            EventLog.add(
+                "LLM",
+                "${model.name}: prefill ${r.optInt("prompt_tokens")} tok in ${"%.1f".format(r.optDouble("prompt_ms") / 1000)} s, " +
+                    "gen ${r.optInt("gen_tokens")} tok in ${"%.1f".format(r.optDouble("gen_ms") / 1000)} s, JSON ${parsed != null}",
+            )
+        } catch (e: Throwable) {
+            EventLog.add("LLM", "crashed: ${e.javaClass.simpleName}: ${e.message}")
+            Results.add(
+                "llm",
+                JSONObject().put("model", Models.displayName(model)).put("model_file", model.name)
+                    .put("source", source.label).put("template", template.label).put("error", e.message ?: "crash"),
+            )
         }
     }
 
-    fun rateLast(key: String, value: Int) {
-        Results.updateLast("llm") { it.put(key, value) }
-        _lastLlm.value = Results.all.value.lastOrNull { it.optString("kind") == "llm" }?.let { JSONObject(it.toString()) }
+    private fun markStart(type: String, model: File, source: String = "", template: String = "") {
+        Results.add(
+            "run_start",
+            JSONObject().put("type", type).put("model", Models.displayName(model)).put("model_file", model.name)
+                .put("source", source).put("template", template),
+        )
+    }
+
+    /**
+     * A model too big for RAM gets the whole process killed by Android, so no
+     * result is ever written. On the next launch, a run that started but never
+     * finished is recorded as such: that is a result too.
+     */
+    fun recoverCrashedRun() {
+        val all = Results.all.value
+        val start = all.lastOrNull { it.optString("kind") == "run_start" } ?: return
+        val startAt = start.optLong("at")
+        val finished = all.any {
+            it.optLong("at") >= startAt && it.optString("kind") in setOf("asr", "asr_error", "llm") &&
+                it.optString("model") == start.optString("model")
+        }
+        if (finished || all.any { it.optString("kind") == "crash_noted" && it.optLong("start_at") == startAt }) return
+        val reason = "Aplikace spadla během běhu modelu (nejspíš došla paměť)."
+        val type = start.optString("type")
+        Results.add(
+            if (type == "llm") "llm" else "asr_error",
+            JSONObject().put("model", start.optString("model")).put("model_file", start.optString("model_file"))
+                .put("source", start.optString("source")).put("template", start.optString("template"))
+                .put("error", reason),
+        )
+        Results.add("crash_noted", JSONObject().put("start_at", startAt))
+        EventLog.add("CRASH", "${start.optString("model")}: $reason")
+    }
+
+    fun rate(uid: String, key: String, value: Int) {
+        Results.update({ it.optString("uid") == uid }) { it.put(key, value) }
     }
 }

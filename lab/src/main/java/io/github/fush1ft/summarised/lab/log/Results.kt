@@ -23,18 +23,19 @@ object Results {
     fun add(kind: String, data: JSONObject) {
         data.put("kind", kind)
         data.put("at", System.currentTimeMillis())
+        data.put("uid", java.util.UUID.randomUUID().toString())
         _all.value = _all.value + data
         runCatching { file.appendText(data.toString() + "\n") }
     }
 
-    /** Replaces the last result of [kind] (used to attach a rating after a run). */
+    /** Changes the newest result matching [match] (e.g. to attach a rating). */
     @Synchronized
-    fun updateLast(kind: String, update: (JSONObject) -> Unit) {
-        val idx = _all.value.indexOfLast { it.optString("kind") == kind }
+    fun update(match: (JSONObject) -> Boolean, change: (JSONObject) -> Unit) {
+        val idx = _all.value.indexOfLast(match)
         if (idx < 0) return
         // Swap in a copy: StateFlow drops emissions equal to the current list.
         val copy = JSONObject(_all.value[idx].toString())
-        update(copy)
+        change(copy)
         _all.value = _all.value.toMutableList().also { it[idx] = copy }
         runCatching { file.writeText(_all.value.joinToString("\n", postfix = "\n") { it.toString() }) }
     }

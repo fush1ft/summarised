@@ -18,6 +18,9 @@ object BenchRecorder {
     val recordingId: StateFlow<String?> = _recordingId
     private val _elapsedMs = MutableStateFlow(0L)
     val elapsedMs: StateFlow<Long> = _elapsedMs
+    private val _level = MutableStateFlow(0f)
+    /** Microphone level 0..1 for the live meter. */
+    val level: StateFlow<Float> = _level
     @Volatile private var running = false
 
     fun sampleFile(context: Context, passageId: String): File =
@@ -52,6 +55,11 @@ object BenchRecorder {
                 if (n > 0) {
                     writer.write(buf, n)
                     _elapsedMs.value = writer.durationMs()
+                    var sum = 0.0
+                    for (i in 0 until n) sum += buf[i].toDouble() * buf[i]
+                    val rms = kotlin.math.sqrt(sum / n)
+                    // log scale: room noise (rms ~100) -> 0, normal speech (~1000-3000) -> 0.5-0.75.
+                    _level.value = ((kotlin.math.log10(1 + rms) - 2.0) / 2.0).toFloat().coerceIn(0f, 1f)
                 }
             }
         } finally {
@@ -60,6 +68,7 @@ object BenchRecorder {
             writer.close()
             tmp.renameTo(sampleFile(context, passageId))
             _recordingId.value = null
+            _level.value = 0f
         }
     }
 }

@@ -10,5 +10,6 @@ class LabApplication : Application() {
         EventLog.init(this)
         Results.init(this)
         EventLog.add("APP", "process started")
+        io.github.fush1ft.summarised.lab.bench.BenchRunner.recoverCrashedRun()
     }
 }

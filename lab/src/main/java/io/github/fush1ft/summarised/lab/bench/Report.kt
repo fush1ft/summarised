@@ -6,6 +6,7 @@ import android.content.Context
 import android.os.Build
 import io.github.fush1ft.summarised.lab.capture.CaptureController
 import io.github.fush1ft.summarised.lab.capture.Haptics
+import io.github.fush1ft.summarised.lab.capture.Scenarios
 import io.github.fush1ft.summarised.lab.capture.Settings
 import io.github.fush1ft.summarised.lab.log.EventLog
 import io.github.fush1ft.summarised.lab.log.Results
@@ -17,20 +18,29 @@ object Report {
         val sb = StringBuilder()
         val mem = ActivityManager.MemoryInfo().also { context.getSystemService(ActivityManager::class.java).getMemoryInfo(it) }
         val isAssistant = context.getSystemService(RoleManager::class.java).isRoleHeld(RoleManager.ROLE_ASSISTANT)
-        sb.appendLine("# Summarised M0 lab — report")
+        sb.appendLine("# Summarised M0 lab: report")
         sb.appendLine()
         sb.appendLine("- Zařízení: ${Build.MANUFACTURER} ${Build.MODEL} (SoC ${Build.SOC_MANUFACTURER} ${Build.SOC_MODEL})")
         sb.appendLine("- Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), RAM ${"%.1f".format(mem.totalMem / 1e9)} GB")
         sb.appendLine("- Lab je výchozí asistent: ${if (isAssistant) "ano" else "NE"}")
-        sb.appendLine("- Start mode: ${Settings.startMode(context).name}, haptika: ${Haptics.usage(context).name}")
+        sb.appendLine("- Způsob spuštění: ${Settings.startMode(context).name}, haptika: ${Haptics.usage(context).name}")
         val native = runCatching { Native.json(Native.instance.systemInfo()).optString("llama") }.getOrElse { "nenačteno: ${it.message}" }
         sb.appendLine("- ggml: `$native`")
         sb.appendLine()
 
+        val verdicts = all.filter { it.optString("kind") == "scenario" }
+        sb.appendLine("## Spouštěč: scénáře")
+        if (verdicts.isEmpty()) sb.appendLine("(nevyzkoušeno)")
+        Scenarios.all.forEach { s ->
+            val v = verdicts.lastOrNull { it.optString("id") == s.id }
+            if (v != null) {
+                sb.appendLine("- ${s.id} ${s.title}: ${if (v.optBoolean("ok")) "✓ funguje" else "✗ nefunguje"} (režim ${v.optString("start_mode")})")
+            }
+        }
         val captures = all.filter { it.optString("kind") == "capture" }
-        sb.appendLine("## Spouštěč: nahrávky (${captures.size})")
         if (captures.isNotEmpty()) {
-            sb.appendLine("| zdroj | délka | záložky | tichá okna |")
+            sb.appendLine()
+            sb.appendLine("| spuštěno | délka | záložky | tichá okna |")
             sb.appendLine("|---|---|---|---|")
             captures.forEach { c ->
                 val bms = c.optJSONArray("bookmarks_ms")
@@ -65,35 +75,38 @@ object Report {
             asr.forEach { r -> sb.appendLine("- **${r.optString("model")} / ${r.optString("passage")}**: ${r.optString("text").trim()}") }
             sb.appendLine("</details>")
         }
+        all.filter { it.optString("kind") == "asr_error" }.forEach { sb.appendLine("- ✗ ${it.optString("model")}: ${it.optString("error")}") }
         sb.appendLine()
 
         val llm = all.filter { it.optString("kind") == "llm" }
-        sb.appendLine("## LLM (${llm.size} běhů)")
-        if (llm.isNotEmpty()) {
-            sb.appendLine("| model | šablona | zdroj | prompt tok | prefill tok/s | gen tok/s | načtení | JSON | čeština | správnost |")
+        sb.appendLine("## Shrnutí (${llm.size} běhů)")
+        val ok = llm.filter { !it.has("error") }
+        if (ok.isNotEmpty()) {
+            sb.appendLine("| model | zdroj | prompt tok | prefill tok/s | gen tok/s | načtení | JSON | čeština | správnost | formát |")
             sb.appendLine("|---|---|---|---|---|---|---|---|---|---|")
-            llm.forEach { r ->
+            ok.forEach { r ->
                 sb.appendLine(
-                    "| ${r.optString("model")} | ${r.optString("template")} | ${r.optString("source")} | ${r.optInt("prompt_tokens")} | " +
+                    "| ${r.optString("model")} | ${r.optString("source")} | ${r.optInt("prompt_tokens")} | " +
                         "${tps(r.optInt("prompt_tokens"), r.optDouble("prompt_ms"))} | ${tps(r.optInt("gen_tokens"), r.optDouble("gen_ms"))} | " +
                         "${s(r.optDouble("load_ms"))} | ${if (r.optBoolean("json_valid")) "✓" else "✗"} | " +
-                        "${r.optInt("rating_czech", 0).takeIf { it > 0 } ?: "–"} | ${r.optInt("rating_facts", 0).takeIf { it > 0 } ?: "–"} |",
+                        "${r.optInt("rating_czech", 0).takeIf { it > 0 } ?: "–"} | ${r.optInt("rating_facts", 0).takeIf { it > 0 } ?: "–"} | " +
+                        "${r.optString("prompt_format")} |",
                 )
             }
+        }
+        llm.filter { it.has("error") }.forEach { sb.appendLine("- ✗ ${it.optString("model")}: ${it.optString("error")}") }
+        sb.appendLine()
+        ok.forEach { r ->
+            sb.appendLine("<details><summary>${r.optString("model")} / ${r.optString("source")}</summary>")
             sb.appendLine()
-            llm.forEach { r ->
-                sb.appendLine("<details><summary>${r.optString("model")} / ${r.optString("source")}</summary>")
-                sb.appendLine()
-                sb.appendLine("```")
-                sb.appendLine(r.optString("text").take(2500))
-                sb.appendLine("```")
-                sb.appendLine("</details>")
-            }
+            sb.appendLine("```")
+            sb.appendLine(r.optString("text").take(2500))
+            sb.appendLine("```")
+            sb.appendLine("</details>")
         }
         return sb.toString()
     }
 
     private fun s(ms: Double) = "%.1f s".format(ms / 1000.0)
     private fun tps(tokens: Int, ms: Double) = if (ms > 0) "%.1f".format(tokens * 1000.0 / ms) else "–"
-
 }
