@@ -1,0 +1,81 @@
+name: M0 lab APK
+
+# Builds the throwaway M0 lab app and publishes it as a rolling pre-release
+# (tag lab-m0), so it can be installed on the reference phone straight from
+# the browser. Runs on pushes that touch the lab, on any branch.
+on:
+  push:
+    paths:
+      - 'lab/**'
+      - 'third_party/**'
+      - '.gitmodules'
+      - 'gradle/**'
+      - 'settings.gradle.kts'
+      - '.github/workflows/lab.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: lab-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lab:
+    name: Build and publish lab APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Build lab APK and run its unit tests
+        run: ./gradlew :lab:assembleDebug :lab:testDebugUnitTest --stacktrace
+
+      - name: Name the artifact
+        id: artifact
+        run: |
+          NAME="summarised-lab-m0-${GITHUB_SHA::7}.apk"
+          cp lab/build/outputs/apk/debug/lab-debug.apk "$NAME"
+          ls -la "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lab-apk
+          path: ${{ steps.artifact.outputs.name }}
+
+      - name: Publish rolling pre-release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete lab-m0 --cleanup-tag --yes || true
+          gh release create lab-m0 \
+            --target "${{ github.sha }}" \
+            --title "M0 lab (testovací build, ${GITHUB_SHA::7})" \
+            --prerelease \
+            --notes "$(cat <<'NOTES'
+          Testovací aplikace pro milník M0. Není to Summarised, jen laboratoř,
+          která na telefonu změří tři věci: spouštění podržením vypínače, rychlost
+          a přesnost českého přepisu, a kvalitu českých shrnutí z lokálního LLM.
+
+          **Instalace:** stáhni APK níže, otevři ho a povol instalaci z prohlížeče.
+          Je to debug build podepsaný standardním debug klíčem: podpis nic
+          neověřuje, takže ho instaluj jen odsud.
+
+          Postup testů je v `docs/M0.md`. Na konci v záložce **Report** zkopíruj
+          výsledky a vlož je do konverzace.
+          NOTES
+          )" \
+            "${{ steps.artifact.outputs.name }}"
