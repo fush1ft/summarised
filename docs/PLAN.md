@@ -281,6 +281,8 @@ the three things everything else depends on:
 
 Output: the chosen models and numbers, written into this file.
 
+*Status:* the lab app is in `lab/` and the test protocol is in [`M0.md`](M0.md). One change from the original plan came out of building it: speech recognition now runs on **whisper.cpp** instead of sherpa-onnx. whisper.cpp and llama.cpp then share one copy of ggml, so the app ships a single inference core. whisper.cpp also brings **Parakeet TDT v3**, which supports Czech and is a third ASR candidate in the benchmark.
+
 **M1 — Capture.** Recording service, Opus chunks, checkpoints, assistant
 trigger + lock-screen card + haptics, notification and tile fallbacks,
 bookmark list with playback. Usable on its own as a bookmarking recorder.
