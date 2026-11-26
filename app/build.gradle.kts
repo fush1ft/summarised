@@ -20,7 +20,7 @@ android {
         minSdk = 33
         targetSdk = 37
         versionCode = providers.environmentVariable("GITHUB_RUN_NUMBER").orNull?.toIntOrNull() ?: 1
-        versionName = "0.4.0-m2"
+        versionName = "0.5.0-m4"
 
         // The inference core is built for arm64 only.
         ndk {
