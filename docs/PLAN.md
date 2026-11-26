@@ -1,124 +1,303 @@
-# Summarised — Implementation Plan
+# Summarised — Implementation Plan (v2: lightweight capture)
 
 ## Context
 
-`fush1ft/summarised` is currently an empty repo (AGPL-3.0 `LICENSE`, a one-line `README.md`, an Android `.gitignore`). The goal is a **100% free and open-source Android app** that records a meeting, transcribes it, labels who said what, summarises it, and lets the user ask questions about it — with **no backend, no API keys, no registration**, and a polished look because the project will be public.
+The first plan aimed at a full meeting suite: speaker diarization, per-speaker
+transcripts, a chat tab and an optional cloud model. This version narrows the
+app to one job and does it well:
 
-**One finding that shapes the whole design:** `ox-alpha` is an anonymous *stealth preview* model that appeared on OpenRouter on 2026-08-20. It is free only for a ~1-week preview window, has no named owner, and **still requires an OpenRouter account and API key**. It cannot carry a zero-config app — it will likely be gone or paid before v1 ships. So the plan makes **on-device inference the default and only required path**, and treats OpenRouter (ox-alpha included, discovered at runtime rather than hardcoded) as an optional bring-your-own-key power-user setting. No Azure backend is needed; the app stays fully local.
+> **Record for hours, drop bookmarks blind by holding the power button, and get
+> each bookmark — and the whole recording — summarised by a model running on
+> the phone.**
 
-**Decisions locked with the user:** on-device default + optional BYOK · distribution via F-Droid + GitHub Releases · multilingual Whisper for STT · minimum target 6 GB RAM / Android 10 (API 29).
+Everything stays offline. No account, no API keys, no backend, no telemetry.
 
-The whole processing chain — VAD, diarization, ASR, summarisation, Q&A — runs offline on the phone. Nothing leaves the device unless the user explicitly pastes an API key.
+**Decisions locked with the user**
+
+| Topic | Decision |
+|---|---|
+| Trigger | The app registers as Android's **default digital assistant**. Holding the power button starts a recording; holding it again while recording adds a bookmark. Works on the lock screen, confirmed by haptics. |
+| Bookmark processing | Summarise the transcript **±2 minutes around the bookmark**: title, short summary, key points. |
+| Language | **Czech** first. |
+| Target device | **Pixel 10a** (8 GB RAM, arm64). Other 8 GB+ phones are a bonus, not a goal. |
+| When to process | **Live**: transcription and bookmark summaries run during recording, so stopping leaves only a few minutes of work. |
+| Scope kept from v1 | **Whole-recording summary.** Dropped: diarization, chat Q&A, bring-your-own-key cloud. |
+| Audio | Kept, compressed as **Opus** (~7–11 MB per hour), so any bookmark can be played back. |
+| Use cases | **Lectures**, **meetings/conversations**, **field work** (hands busy, bookmarks blind). Each gets its own summary template. |
 
 ---
 
-## Architecture
+## How it works
 
 ```
-record ──► 16 kHz mono WAV ──► diarize ──► ASR per speaker turn ──► transcript
-             (AudioRecord)     (sherpa-onnx)   (sherpa-onnx Whisper)      │
-                                                                          ▼
-                                                        summary + chat (llama.cpp)
+power-button hold ──► assistant session ──► start / bookmark (+ haptic)
+                                                     │
+            ┌────────────────────────────────────────┘
+            ▼
+ AudioRecord 16 kHz mono ──┬──► Opus encoder ──► 5-min .ogg chunks (kept)
+                           │
+                           └──► Silero VAD ──► utterances ≤ 28 s ──► Whisper (cs)
+                                                                        │
+                                                             timestamped segments
+                                                                        │
+                  ┌─────────────────────────────┬───────────────────────┘
+                  ▼                             ▼
+     bookmark @t: segments [t-2m, t+2m]   every ~10 min: section summary
+          └──► LLM ──► title + summary          └──► (map step)
+                                                       │
+                               on stop ────────────────┴──► final summary (reduce)
 ```
 
-Diarization runs **before** ASR: segmenting first, then transcribing each speaker turn, gives clean speaker attribution without aligning two independent timelines afterwards.
+Two native engines, both open source and fully offline:
 
-### Gradle modules
+| Stage | Powered by |
+|---|---|
+| Voice activity detection + speech recognition | sherpa-onnx (Silero VAD + Whisper, int8) |
+| Bookmark and recording summaries | llama.cpp (GGUF, Q4_K_M) |
+
+---
+
+## 1. Power-button trigger (the core feature)
+
+Android never hands the power button to apps. It *does* hand it to the
+**default digital assistant**: on Pixel, *Settings → System → Gestures → Press
+and hold power button → Digital assistant* launches whichever app holds the
+assistant role. That is how Grok and Perplexity hook the same gesture, and it
+works from the lock screen.
+
+**Implementation**
+
+- `CaptureVoiceInteractionService : VoiceInteractionService` declared with
+  `BIND_VOICE_INTERACTION` and `res/xml/voice_interaction.xml`:
+  `sessionService`, `recognitionService`, `supportsAssist="true"`,
+  `supportsLaunchVoiceAssistFromKeyguard="true"`, `settingsActivity`.
+- A stub `RecognitionService`: the system's assistant picker only lists apps
+  that declare one.
+- `CaptureSessionService` → `CaptureSession : VoiceInteractionSession`. On
+  `onShow()` it asks `RecordingController` for the current state:
+  - **idle** → start `RecordingService` (foreground, `microphone` type),
+    haptic *start*, card "● Nahrávám".
+  - **recording** → add a bookmark at `now - 1.5 s` (the hold itself takes
+    time), haptic *bookmark*, card "🔖 Záložka 5 · 01:23:45" with **Zpět**
+    (undo) and **Stop** buttons.
+  - The card is a small bottom sheet that hides itself after ~2.5 s and works
+    over the keyguard, so you never have to unlock or look.
+- Holds within 2 s of the previous one are ignored (debounce).
+- **Stopping:** the Stop button on that card, the notification's Stop action,
+  or the in-app button. A hold never stops a recording, so a stray press
+  can't end a three-hour lecture.
+
+**Haptics** (`VibrationEffect.Composition`, which the Pixel supports natively)
+
+| Event | Pattern |
+|---|---|
+| Recording started | two rising ticks |
+| Bookmark added | one firm click |
+| Bookmark undone | one soft tick |
+| Recording stopped | one long thud |
+| Error (mic busy, no permission, storage full) | three short buzzes |
+
+**Fallbacks** for when the gesture is unavailable or a different assistant is
+wanted: a **Bookmark** action on the recording notification (also shown on
+the lock screen), and a Quick Settings tile that starts a recording or adds a
+bookmark.
+
+**Onboarding** walks through: mic + notification permission → *set as default
+assistant* (deep link to `Settings.ACTION_VOICE_INPUT_SETTINGS`; the assistant
+role can't be requested with a dialog) → *set power-button hold to Digital
+assistant* (with a screenshot, since the menu path varies by vendor) → a
+test hold to show it works. It also says plainly that Gemini stops being the
+default assistant while Summarised is selected.
+
+---
+
+## 2. Recording for hours (`:core:audio`)
+
+- `AudioRecord`, `VOICE_RECOGNITION` source, 16 kHz mono PCM-16 — the format
+  sherpa-onnx expects, so no resampling.
+- One capture thread fans each buffer out to two consumers:
+  - **Opus** via `MediaCodec` + `MediaMuxer` (Ogg, API 29+) at 16–24 kbps,
+    written as **5-minute chunk files**. A crash or a killed process loses at
+    most the current chunk, never the recording.
+  - **ASR ring buffer** feeding the VAD.
+- `RecordingService` is a foreground service of type `microphone` with a
+  persistent notification (elapsed time, bookmark count, Bookmark / Stop
+  actions).
+- Every 30 s the state is checkpointed to Room (duration, chunk list,
+  transcription progress). On restart after process death, the recording shows
+  as *interrupted* and stays fully usable.
+- Guards: refuse to start below ~300 MB of free space, warn at 30 minutes left,
+  stop cleanly when full. Microphone conflicts (incoming call, another
+  recorder) pause and resume automatically and are marked in the timeline.
+- Playback with Media3 ExoPlayer over the concatenated chunks; tapping a
+  bookmark seeks to `t - 10 s`.
+
+---
+
+## 3. Live transcription (`:core:asr`)
+
+- **sherpa-onnx** offline Whisper with Silero VAD: speech is cut into
+  utterances of up to 28 s and queued for a single low-priority worker inside
+  `RecordingService`. Each utterance becomes a `Segment(startMs, endMs, text)`.
+- Language is fixed to `cs` (no auto-detect, which also saves time).
+- **Model tiers, picked by an M0 benchmark on the Pixel 10a:**
+  - `whisper-small` int8 (~0.4 GB): the safe default, comfortably faster than
+    real time.
+  - `whisper-large-v3-turbo` int8 (~1 GB): much better Czech. Used live if the
+    benchmark shows a real-time factor below ~0.6. Otherwise it's offered as
+    *re-transcribe in better quality* after the recording, ideally while
+    charging.
+- If the queue falls behind (thermal throttling, low battery) it keeps
+  buffering and catches up after stop. Nothing is dropped; the user only
+  waits longer.
+
+---
+
+## 4. On-device LLM (`:core:llm`)
+
+- **llama.cpp** built from source (git submodule at a pinned tag) with a thin
+  JNI + Kotlin wrapper, **arm64-v8a only**.
+- **Model:** chosen in M0 by a Czech evaluation (see Verification). Candidates
+  that fit 8 GB next to Whisper:
+  - **Qwen3-4B-Instruct** Q4_K_M (~2.5 GB, Apache-2.0): the expected default.
+  - **Gemma 3n E4B** Q4 (~3 GB, Gemma terms): often stronger in Czech, so it
+    competes on quality.
+  - **Qwen3-1.7B** Q4_K_M (~1.1 GB): fallback when memory is tight.
+- Loaded on demand and unloaded after 60 s idle, so Whisper and the LLM never
+  compete for RAM longer than they must. One job queue with priority:
+  **ASR > bookmark summaries > section summaries**.
+- All structured output is constrained with a **GBNF grammar** to JSON, so
+  parsing is reliable rather than hopeful.
+
+### Bookmark summaries
+
+1. A bookmark at time *t* is ready once the transcript covers `t + 2 min`, or
+   once the recording stops.
+2. Input: the segments in `[t - 2 min, t + 2 min]`, plus the previous section
+   summary for context (so "that" and "he" make sense).
+3. Output: `{ title, summary (2–3 sentences), points[] }`, plus template
+   extras: `term/definition` for lectures, `task/owner` for meetings,
+   `numbers/measurements` for field work.
+4. The result appears in the notification ("🔖 5: Výpočet derivací…"), so you
+   can check it's right without opening the app.
+
+### Whole-recording summary (map-reduce, mostly done during recording)
+
+- **Map, live:** every ~10 minutes of transcript gets a short section summary.
+  A 3-hour lecture becomes ~18 sections, already done by the time you stop.
+- **Reduce, on stop:** section summaries + all bookmark summaries →
+  final summary using the recording's template. Bookmarked passages get more
+  weight: you marked them for a reason.
+- **Templates** (default set in Settings, switchable per recording, re-run
+  without re-transcribing):
+
+| Template | Output |
+|---|---|
+| **Přednáška** (lecture) | outline by topic, key concepts with definitions, formulas/examples, *possible exam questions* |
+| **Schůzka** (meeting) | TL;DR, decisions, action items (who, what, by when), open questions |
+| **Terén** (field) | chronological log, findings, numbers and measurements, to-dos |
+
+### Thermal and battery behaviour
+
+Using `PowerManager.getThermalHeadroom()` and the battery level, LLM jobs are
+deferred until stop when the phone is hot or below 20%. Transcription keeps
+going unless the phone is critically hot.
+
+---
+
+## 5. Data model (Room)
+
+The schema hasn't shipped, so it's replaced outright (version 1, no migration).
+`Speaker` and `ChatMessage` are removed.
+
+```
+Recording(id, title, createdAt, durationMs, status, template, asrModel, llmModel)
+AudioChunk(id, recordingId, index, filePath, startMs, durationMs)
+Segment(id, recordingId, startMs, endMs, text)
+Bookmark(id, recordingId, atMs, createdVia, status, title, summary, pointsJson, extrasJson)
+SectionSummary(id, recordingId, startMs, endMs, summary)
+Summary(id, recordingId, template, bodyJson, generatedAt)
+```
+
+`Recording.status`: `RECORDING → FINISHING → READY | INTERRUPTED | FAILED`.
+`Bookmark.status`: `PENDING → WAITING_FOR_CONTEXT → SUMMARISING → READY | FAILED`.
+`createdVia`: `ASSISTANT | NOTIFICATION | TILE | APP`.
+
+---
+
+## 6. UI
+
+Deliberately small: three screens plus the lock-screen card.
+
+- **Home:** a big record button with elapsed time and bookmark count while
+  recording; the recordings list below (title, duration, bookmark count,
+  status).
+- **Recording detail:** tabs **Záložky** (default), **Shrnutí**, **Přepis**.
+  - Záložky: one card per bookmark with timestamp, title, summary and points,
+    plus a ▶ button that plays the surrounding audio. Swipe to delete.
+  - Shrnutí: the template output, plus a template switcher and *Re-generate*.
+  - Přepis: the full transcript, bookmarks shown inline as markers, search,
+    tap-to-seek with a mini player.
+- **Settings:** models (download, size, delete), default template, bookmark
+  window (default ±2 min), Opus bitrate, assistant setup again.
+- **Export / share:** Markdown (works directly in Obsidian or Notion), plain
+  text, and the audio file.
+
+Material 3 with dynamic color, dark mode by default on the lock-screen card.
+
+---
+
+## 7. Modules (lightweight)
 
 | Module | Responsibility |
 |---|---|
-| `:app` | Compose navigation host, DI wiring (Hilt), app entry |
-| `:core:designsystem` | Material 3 Expressive theme, typography, colors, shared components |
-| `:core:database` | Room entities/DAOs for recordings, segments, summaries, chat |
-| `:core:audio` | `AudioRecord` capture, WAV writer, `RecordingService` (foreground) |
-| `:core:stt` | sherpa-onnx wrapper: `Diarizer` + `Transcriber` |
-| `:core:llm` | `LlmEngine` interface, `LocalLlamaEngine` (JNI), `OpenRouterEngine` |
-| `:core:modelmanager` | Model catalog, consented downloads, SHA-256 verification, storage |
-| `:feature:record` | Record screen, live waveform, timer |
-| `:feature:library` | Recording list, search, rename, delete |
-| `:feature:detail` | Transcript, summary, speaker naming, chat tab |
-| `:feature:settings` | Model picker, BYOK, storage, about/licenses |
+| `:app` | Screens, navigation, assistant service + session, Quick Settings tile, Hilt wiring |
+| `:core:designsystem` | Theme and shared components (exists) |
+| `:core:database` | Room schema above (exists, to be reshaped) |
+| `:core:audio` | Capture, Opus chunk writer, `RecordingService`, `RecordingController`, haptics |
+| `:core:asr` | sherpa-onnx VAD + Whisper wrapper, transcription queue |
+| `:core:llm` | llama.cpp JNI, job queue, prompts and templates, GBNF grammars |
+| `:core:models` | Model catalogue, consented downloads, SHA-256 verification |
 
-Kotlin + Compose + Coroutines/Flow + Hilt + Room + DataStore + WorkManager. **No Firebase, no GMS, no proprietary SDK** — an F-Droid inclusion requirement and a prerequisite for the "100% FOSS" claim.
+The v1 `:feature:*` modules are folded into `:app`: three screens don't justify
+them. APK target: **under 40 MB** (arm64-only, R8, no bundled models).
 
----
-
-## Core technical choices
-
-### Audio capture (`:core:audio`)
-- `AudioRecord` with `MediaRecorder.AudioSource.VOICE_RECOGNITION`, 16 kHz mono PCM-16 — the exact format both sherpa-onnx models expect, so no resampling stage.
-- Streams straight to a WAV file; a foreground service with `foregroundServiceType="microphone"` keeps recording alive with the screen off (Android 9+ blocks background mic without one). Pause/resume, persistent notification, amplitude emitted as a `Flow<Float>` for the waveform.
-- **Honest scope note:** Android blocks third-party recording of phone calls, and most VoIP apps opt out of `AudioPlaybackCapture`. v1 targets **in-room meetings via the mic**. Capturing playback audio (via `MediaProjection` consent) is a post-v1 experiment, documented as best-effort.
-
-### Speech-to-text + diarization (`:core:stt`)
-Both come from **one dependency: sherpa-onnx** (Apache-2.0, official Android AAR + Kotlin API, fully offline). This is the single most valuable reuse in the plan — it removes an entire second native stack.
-
-- **Diarization:** `OfflineSpeakerDiarization` = `pyannote/segmentation-3.0` (ONNX, ~6 MB) + a 3D-Speaker ERes2NetV2 embedding model (~25 MB), clustered to produce `(startSec, endSec, speakerId)`. Supports either a known speaker count or a clustering threshold — expose both (auto by default, manual override in settings).
-- **ASR:** sherpa-onnx offline Whisper recognizer, int8-quantised. `whisper-base` multilingual (~150 MB) as the default; `whisper-small` (~500 MB) offered as a "better accuracy" download; `whisper-tiny` as the low-end fallback.
-- Adjacent same-speaker segments are merged, then split to fit Whisper's 30 s window before recognition.
-- Runs as a `WorkManager` chain (diarize → transcribe → summarise) with a foreground notification and per-stage progress, so it survives the user leaving the app. Every stage is resumable and writes partial results to Room.
-
-### On-device LLM (`:core:llm`)
-- **llama.cpp** built from source via CMake/NDK, packaged as a `:core:llm` native library with a thin JNI + Kotlin wrapper — mirroring the structure of llama.cpp's own `examples/llama.android` (`lib` module + `build.gradle.kts` + CMake). Pin llama.cpp as a git submodule at a known-good tag.
-- **Default model: Qwen3-1.7B, Q4_K_M GGUF (~1.1 GB), Apache-2.0, 32k context.** Apache-2.0 matters here: it keeps the "100% open source" claim defensible in a way Google's custom Gemma terms historically did not. Qwen3-4B offered as an optional download on 8 GB+ devices.
-- `LlmEngine` interface with two implementations (`LocalLlamaEngine`, `OpenRouterEngine`) so the UI never knows which backend answered.
-- **Summarisation:** map-reduce over transcript chunks, then a final pass producing structured output — title, TL;DR, key points, decisions, action items — constrained with a **GBNF grammar** so JSON parsing is reliable rather than hopeful.
-- **Chat Q&A:** if the transcript fits in ~60% of context (a 1-hour meeting is roughly 12k tokens, so it usually does), stuff the whole thing in. Otherwise fall back to **BM25 keyword retrieval** over transcript chunks — no embedding model, no extra download, no vector DB in v1.
-
-### Optional BYOK (off by default)
-- Settings screen accepts an OpenRouter key stored in `EncryptedSharedPreferences`. The model list is **fetched from `/api/v1/models` at runtime and filtered to free models**, so `ox-alpha` appears if it still exists and nothing breaks when it disappears. Never hardcode it.
-- Enabling it requires passing a clear dialog stating the transcript leaves the device; a persistent badge shows on any screen where a cloud model is active.
-
-### Model delivery (F-Droid-compatible)
-Models are **not bundled** (they'd blow past size limits) and **never fetched silently** — F-Droid's inclusion policy forbids downloading binaries without explicit user consent. First-run onboarding presents a screen naming each model, its size, its license, and its source URL, with an explicit download button. Downloads are resumable, run in `WorkManager`, and are **SHA-256 verified** against a checksum table in the repo. A device-capability check (RAM, ABI) recommends the right tier and warns instead of blocking.
-
----
-
-## Data model (Room)
-
-```
-Recording(id, title, filePath, durationMs, createdAt, status, language, modelUsed)
-Segment(id, recordingId, startMs, endMs, speakerId, text)
-Speaker(id, recordingId, label, displayName, colorIndex)   // user-renamable
-Summary(id, recordingId, tldr, keyPointsJson, decisionsJson, actionItemsJson, generatedAt)
-ChatMessage(id, recordingId, role, content, createdAt)
-```
-
-`status` drives the UI state machine: `RECORDING → QUEUED → DIARIZING → TRANSCRIBING → SUMMARISING → READY | FAILED`, with a retry-from-failed-stage action.
-
----
-
-## Design ("make it pretty")
-
-- **Material 3 Expressive**, dynamic color on Android 12+ with a hand-picked fallback palette (deep indigo/teal), full dark mode, large expressive type for the record screen.
-- **Record screen:** a breathing concentric ring around the record button, live amplitude waveform, big monospace timer, pause/stop. Deliberately spare.
-- **Library:** cards with title, duration, speaker-count chip, relative date, and a status shimmer while processing.
-- **Detail:** three tabs — Summary (hero TL;DR card, key points, checkable action items), Transcript (speaker-colored chips, timestamps, tap-to-seek with a mini player, search), Chat (message bubbles with streaming tokens, suggested starter questions).
-- **Speakers** get stable colors and are renamable inline ("Speaker 1" → "Priya"), retroactively applied to the whole transcript.
-- Meaningful motion: shared-element transitions list→detail, streaming text, animated processing progress.
-- **Repo presentation:** adaptive app icon, README with a screenshot row, feature list, badges, and a clear "how the offline pipeline works" diagram; fastlane metadata structure for F-Droid (`metadata/en-US/` with descriptions, screenshots, changelogs).
+Models are never bundled or fetched silently. Onboarding shows each model's
+name, size, licence and source, and downloads only on an explicit tap.
+Downloads are resumable and SHA-256 verified. For the Pixel 10a the default
+download is ~3 GB in total.
 
 ---
 
 ## Milestones
 
-**M0 — Foundations.** Gradle multi-module scaffold, version catalog, Hilt, Compose, design system module, Room skeleton. GitHub Actions CI (assemble + lint + unit tests). `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, issue/PR templates, `CHANGELOG.md`.
+**M0 — Spikes on the Pixel 10a (risk first).** A throwaway build that proves
+the three things everything else depends on:
+1. The assistant role receives a power-button hold **on the lock screen**, can
+   start a `microphone` foreground service from the session (Android 14+
+   restricts background mic starts), and haptics fire with the screen off.
+2. Whisper small and turbo: real-time factor and WER on Czech fixtures.
+3. LLM candidates: speed (tokens/s) and quality of Czech bookmark summaries.
 
-**M1 — Record & library.** A genuinely usable recorder: capture, foreground service, waveform, playback, library list, rename/delete, storage management. Ships as v0.1 alpha.
+Output: the chosen models and numbers, written into this file.
 
-**M2 — Transcription.** sherpa-onnx AAR integration, model catalog + consented downloader + SHA-256 verification, onboarding flow, Whisper transcription pipeline in WorkManager, transcript UI with tap-to-seek.
+**M1 — Capture.** Recording service, Opus chunks, checkpoints, assistant
+trigger + lock-screen card + haptics, notification and tile fallbacks,
+bookmark list with playback. Usable on its own as a bookmarking recorder.
+*v0.1.*
 
-**M3 — Diarization.** Speaker segmentation + clustering, ASR restructured to run per speaker turn, speaker colors and inline renaming, auto/manual speaker-count control.
+**M2 — Live transcription.** Model downloader, VAD + Whisper queue, transcript
+tab with inline bookmarks and search.
 
-**M4 — On-device summaries.** llama.cpp submodule + JNI + Kotlin wrapper, Qwen3-1.7B download tier, map-reduce summarisation with GBNF-constrained JSON, summary UI, action items.
+**M3 — Bookmark summaries.** llama.cpp integration, job queue, bookmark prompt +
+grammar, results in the notification and the bookmark cards.
 
-**M5 — Chat Q&A.** Streaming chat over the transcript, context stuffing with BM25 fallback, suggested questions, persisted history.
+**M4 — Whole-recording summary.** Live section summaries, reduce on stop, the
+three templates, re-generate, Markdown export. *v0.5: feature-complete.*
 
-**M6 — Sharing & BYOK.** Export transcript/summary as Markdown, TXT, SRT; share sheet. Optional OpenRouter key with runtime free-model discovery and an explicit privacy gate.
-
-**M7 — Release.** Performance and thermal tuning, accessibility pass (TalkBack, contrast, font scaling), localisation scaffolding, privacy policy, reproducible-build check, F-Droid submission, signed GitHub Release.
-
-Each milestone is a PR onto `claude/summarised-app-plan-js7004` with a working build.
+**M5 — Polish and release.** Thermal/battery tuning from real 3-hour sessions,
+optional re-transcription in better quality, accessibility pass, F-Droid
+metadata, signed GitHub Release. *v1.0.*
 
 ---
 
@@ -126,37 +305,30 @@ Each milestone is a PR onto `claude/summarised-app-plan-js7004` with a working b
 
 | Risk | Mitigation |
 |---|---|
-| `ox-alpha` vanishes or starts charging | Never a dependency — on-device is the default; cloud models are discovered at runtime and degrade gracefully to absent |
-| Diarization RAM/time on long recordings | Chunk audio into ~10-min windows with cross-window speaker re-clustering; warn above ~90 min |
-| Whisper + LLM too slow on mid-range phones | Model tiers by device RAM; run stages sequentially, never concurrently; foreground-service progress so slowness is visible, not mysterious |
-| Thermal throttling on long jobs | Process while charging/idle where possible; batch with pauses; surface a "this may take a while" estimate |
-| Model weight licenses | **Verify each weight's license before M2 ships** (Whisper MIT, 3D-Speaker Apache-2.0, pyannote segmentation-3.0 needs confirmation) and list them all in an in-app licenses screen |
-| Legal exposure from recording | First-run consent notice about local recording-consent laws, non-dismissible recording indicator, no covert-recording affordances |
-| APK bloat / F-Droid limits | Models downloaded post-install with consent, never bundled |
-
-**Note on the license:** AGPL-3.0 is already committed and is F-Droid-compatible. Its network-copyleft clause does nothing for an app with no backend — plain GPL-3.0 is the more conventional fit — but this is your call and the plan assumes AGPL-3.0 stays.
+| Power-hold gesture limited on some phones or OEM skins | Notification and Quick Settings fallbacks from M1; M0 verifies the Pixel path first |
+| Starting a mic foreground service from the assistant session is blocked on Android 14+ | The session shows a visible window, which counts as foreground. Verified in M0; fallback opens a transparent activity for one frame |
+| User loses Gemini on the power button | Stated in onboarding; reversible in one settings screen |
+| Czech ASR quality with small models | Turbo tier, live if fast enough or as post-recording re-transcription; fixed `cs` language |
+| Czech LLM quality at 4B | Czech eval in M0 picks the model; prompts are written in Czech; grammar-constrained output avoids format errors |
+| Battery and heat over hours | Live work is throttled by thermal headroom and battery; heavy work is deferred until stop |
+| RAM: Whisper + LLM at once | On-demand LLM loading, a single priority queue, never two native jobs in parallel |
+| Recording consent laws | First-run notice; a recording notification that can't be dismissed; no hidden-recording mode |
 
 ---
 
 ## Verification
 
-**Per-milestone automated checks**
-- `./gradlew assembleDebug lintDebug testDebugUnitTest` green in CI on every PR.
-- Unit tests: WAV writer byte-correctness, segment merging/splitting logic, BM25 ranking, GBNF-constrained JSON parsing (including malformed-output fallback), model checksum verification (correct, corrupt, and truncated files).
-- Instrumented tests: Room migrations, WorkManager chain resumption after process death, permission-denied paths.
+**Automated (CI, every PR):** `./gradlew assembleDebug lintDebug testDebugUnitTest`.
+Unit tests cover the Opus chunk writer, checkpoint/resume, bookmark window
+selection (start/end of recording edges, overlapping windows), the
+state machine for start/bookmark/debounce, grammar-constrained JSON parsing
+with malformed-output fallback, and checksum verification.
 
-**Pipeline correctness (the part that actually matters)**
-- Commit a short two-speaker audio fixture with a hand-written reference transcript. Assert diarization finds exactly 2 speakers, that speaker-turn boundaries land within ~1 s of reference, and that WER stays under a recorded threshold. Run it as an instrumented test on a real device in the M2/M3 gates.
-- Log real-time factor (processing time ÷ audio duration) and peak RSS per stage; record them in the README so regressions are visible.
-
-**Manual device matrix** (min one 6 GB and one 8 GB+ device, Android 10 and current)
-1. Record a 10-minute two-person conversation with the screen off; confirm the recording survives and the notification stays.
-2. Confirm the full chain completes offline **in airplane mode** — this is the single most important end-to-end check.
-3. Verify speaker labels are consistent, renaming propagates, and tap-to-seek lands correctly.
-4. Confirm the summary produces valid structured output, and ask 3 questions in chat including one whose answer is late in the transcript.
-5. Kill the app mid-processing; confirm it resumes rather than restarting from scratch.
-
-**Release gates**
-- Fresh install → onboarding → no network call fires before the user taps download (verify with a network-logging proxy or `StrictMode`).
-- Full offline run on a device that has never had network access.
-- Reproducible-build verification and an F-Droid-policy self-check: no non-free dependencies, no unconsented binary downloads.
+**On device (Pixel 10a, per milestone):**
+- Czech fixtures: a 10-minute lecture excerpt and a 2-person conversation with
+  reference transcripts. Track WER and real-time factor per ASR model.
+- Bookmark eval: 20 hand-placed bookmarks with reference summaries, rated for
+  factual accuracy and Czech fluency per LLM candidate.
+- Endurance: a **3-hour recording** with the screen off and locked, 15
+  power-hold bookmarks. Check zero lost audio, all bookmarks summarised, and
+  record battery drain and peak temperature in the README.

@@ -1,10 +1,14 @@
 # Summarised
 
-A free and open-source meeting recorder, transcriber and summariser for Android.
+A free and open-source, lightweight voice recorder for Android that summarises
+what matters — **entirely on your device**. No account, no API keys, no backend,
+no telemetry.
 
-Record a conversation, get a speaker-labelled transcript, a structured summary,
-and a chat you can ask questions about what was said — **entirely on your device**.
-No account, no API keys, no backend, no telemetry.
+Record lectures, meetings or field work for hours. Whenever something important
+comes up, **hold the power button** — even with the phone locked in your
+pocket — and feel a click: that's a bookmark. A local model transcribes the
+recording as it goes, summarises a few minutes around each bookmark, and writes
+a summary of the whole recording when you stop.
 
 > **Status: early development.** The project scaffold is in place; recording
 > lands next. See [`docs/PLAN.md`](docs/PLAN.md) for the full architecture and
@@ -13,22 +17,23 @@ No account, no API keys, no backend, no telemetry.
 ## How it will work
 
 ```
-record ──► 16 kHz mono WAV ──► diarize ──► ASR per speaker turn ──► transcript
-             (AudioRecord)     (sherpa-onnx)   (Whisper, offline)        │
-                                                                         ▼
-                                                       summary + chat (llama.cpp)
+hold power ──► start / bookmark (+ haptic, works on the lock screen)
+
+mic ──┬──► Opus audio (kept, ~10 MB/hour)
+      └──► VAD ──► Whisper (live) ──► transcript
+                                         │
+              bookmark ±2 min ──► LLM ──► title + summary
+              every 10 min    ──► LLM ──► section summary ──► final summary on stop
 ```
 
 | Stage | Runs on | Powered by |
 |---|---|---|
-| Recording | device | `AudioRecord` + foreground service |
-| Speaker diarization | device | sherpa-onnx (pyannote + 3D-Speaker) |
-| Transcription | device | sherpa-onnx (Whisper, multilingual) |
-| Summary & Q&A | device | llama.cpp (Qwen3-1.7B, Apache-2.0) |
+| Trigger | device | Android digital-assistant role (power-button hold) |
+| Recording | device | `AudioRecord` + Opus, foreground service |
+| Transcription | device | sherpa-onnx (Silero VAD + Whisper, Czech first) |
+| Bookmark & recording summaries | device | llama.cpp (4B-class GGUF model) |
 
-Everything is offline by default. An optional bring-your-own-key setting can
-route summaries through a cloud model instead, but it is off unless you turn it
-on and say so explicitly.
+Everything is offline. Nothing leaves the phone.
 
 ## Building
 
@@ -41,8 +46,8 @@ offer to download the SDK.
 ./gradlew lintDebug              # lint (warnings are errors)
 ```
 
-Targets `minSdk` 29 (Android 10) and `compileSdk` 37. The on-device models want
-6 GB of RAM or more to be comfortable.
+Targets `minSdk` 29 (Android 10) and `compileSdk` 37. The on-device models are
+tuned for 8 GB of RAM (reference device: Pixel 10a).
 
 ## Contributing
 
