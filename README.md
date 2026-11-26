@@ -1,8 +1,10 @@
 # Summarised
 
 A free and open-source, lightweight voice recorder for Android that summarises
-what matters — **entirely on your device**. No account, no API keys, no backend,
-no telemetry.
+what matters. Recording and speech recognition run **entirely on your device**;
+summaries come from a fast free cloud model by default (Groq, or keyless
+Pollinations) with an on-device fallback, and one setting keeps everything
+offline. No backend, no telemetry.
 
 Record lectures, meetings or field work for hours. Whenever something important
 comes up, **hold the power button** — even with the phone locked in your
@@ -30,10 +32,11 @@ mic ──┬──► Opus audio (kept, ~10 MB/hour)
 |---|---|---|
 | Trigger | device | Android digital-assistant role (power-button hold) |
 | Recording | device | `AudioRecord` + Opus, foreground service |
-| Transcription | device | sherpa-onnx (Silero VAD + Whisper, Czech first) |
-| Bookmark & recording summaries | device | llama.cpp (4B-class GGUF model) |
+| Transcription | device | whisper.cpp (Parakeet TDT v3, Czech first) |
+| Bookmark & recording summaries | cloud by default, device as fallback | Groq / Pollinations, then llama.cpp |
 
-Everything is offline. Nothing leaves the phone.
+Audio never leaves the phone. In the default mode the transcript text is sent
+to the summary provider; *on-device only* sends nothing.
 
 ## Building
 

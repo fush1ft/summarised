@@ -10,7 +10,7 @@ app to one job and does it well:
 > each bookmark — and the whole recording — summarised by a model running on
 > the phone.**
 
-Everything stays offline. No account, no API keys, no backend, no telemetry.
+Recording and speech recognition always stay on the phone. Summaries use a fast cloud model by default and fall back to an on-device one; a setting keeps everything offline. No account of our own, no backend, no telemetry.
 
 **Decisions locked with the user**
 
@@ -21,7 +21,8 @@ Everything stays offline. No account, no API keys, no backend, no telemetry.
 | Language | **Czech** first. |
 | Target device | **Pixel 10a** (8 GB RAM, arm64). Other 8 GB+ phones are a bonus, not a goal. |
 | When to process | **Live**: transcription and bookmark summaries run during recording, so stopping leaves only a few minutes of work. |
-| Scope kept from v1 | **Whole-recording summary.** Dropped: diarization, chat Q&A, bring-your-own-key cloud. |
+| Scope kept from v1 | **Whole-recording summary.** Dropped: diarization, chat Q&A. |
+| Summaries (decided after M0) | **Easy mode (default):** Groq (if the user adds a free key) → Pollinations GPT-OSS 20B (no key) → local model. **Advanced mode:** the user picks providers, models and order, including *on-device only*. Audio and speech recognition never leave the phone; in Easy mode the transcript text does. |
 | Audio | Kept, compressed as **Opus** (~7–11 MB per hour), so any bookmark can be played back. |
 | Use cases | **Lectures**, **meetings/conversations**, **field work** (hands busy, bookmarks blind). Each gets its own summary template. |
 
@@ -168,6 +169,26 @@ default assistant while Summarised is selected.
   **ASR > bookmark summaries > section summaries**.
 - All structured output is constrained with a **GBNF grammar** to JSON, so
   parsing is reliable rather than hopeful.
+
+### Summariser chain (decided after M0)
+
+M0 measured the same bookmark prompt on the phone and in the cloud:
+
+| Summariser | Czech | Facts | Speed |
+|---|---|---|---|
+| Groq, Qwen3.8 27B | 5/5 | 5/5 | ~390 tok/s, 1.2 s per bookmark |
+| Groq, GPT-OSS 120B | 4/5 | 4/5 | ~400 tok/s, 2.8 s |
+| Pollinations, GPT-OSS 20B (no key) | 5/5 | 4/5 | ~67 tok/s, 5 s |
+| Gemma 4 E2B on the phone | 5/5 | 2/5 (old prompt) | 1.8 tok/s, > 5 min |
+
+So the app has a `Summariser` chain instead of one engine:
+
+- **Easy (default).** 1) Groq with the user's free key, if they added one in onboarding ("get a free key, 1 minute"); the model is discovered at runtime, preferring Qwen3.x and then GPT-OSS 120B. 2) Pollinations' keyless GPT-OSS 20B. 3) The on-device model. A step is skipped on missing key, network error, 401/402/429 or timeout, and retried later where the server gives `Retry-After`.
+- **Advanced.** The user orders any of: Groq, Gemini, Cerebras, OpenRouter (own keys), Pollinations, on-device; or chooses *on-device only*.
+- **Pollinations' keyless limits** (one request per 45 s per IP, 100 per day, ~16,000 characters in, 800 tokens out) shape the job queue: requests are spaced, a whole-recording summary is chunked under the input limit, and over the daily cap the chain moves on.
+- **Disclosure.** Onboarding says plainly that in Easy mode the transcript text is sent to the chosen provider (never audio), shows which provider produced each summary, and offers *on-device only* in one tap. Keys stay in the app's private storage.
+- **F-Droid:** a default that depends on third-party network services needs the `NonFreeNet` anti-feature; *on-device only* keeps the app fully usable without it.
+- The on-device model stays as the last fallback; its 1.8 tok/s in M0 (measured on a phone heated by the Whisper turbo runs) still needs the thread-count speed test before choosing between Gemma 4 E2B and Qwen3 4B.
 
 ### Bookmark summaries
 
